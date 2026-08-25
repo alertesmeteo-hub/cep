@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Aperçu CEP v1.0.0</title>
+  <link rel="stylesheet" href="../wordpress/cep-ecmwf-france/assets/cep-meteo.css">
+  <link rel="stylesheet" href="../wordpress/cep-ecmwf-france/assets/cep-map.css">
+  <style>body{margin:0;padding:18px;background:#eef3f7;font-family:Inter,"Segoe UI",Arial,sans-serif}.preview{max-width:1480px;margin:auto}</style>
+</head>
+<body>
+<main class="preview">
+<section class="cep-card cep-national" data-cep-app data-base-url="../build/test-cep" data-default-code="66136" data-default-department="66" data-default-name="Perpignan" data-hours="48" data-timezone="Europe/Paris" data-title-prefix="Prévisions CEP" data-selector="1">
+  <header class="cep-header">
+    <div><p class="cep-kicker">MODÈLE HAUTE RÉSOLUTION • FRANCE MÉTROPOLITAINE</p><h2 data-cep-title>Prévisions CEP — Perpignan</h2><p class="cep-city-altitude" data-cep-altitude>Altitude de Perpignan : chargement…</p><p class="cep-meta" data-cep-meta>Chargement du dernier run CEP…</p></div>
+    <div class="cep-badge">CEP<br><strong>0,25°</strong></div>
+  </header>
+  <div class="cep-toolbar">
+    <div class="cep-search"><label for="preview-city">Choisissez votre commune</label><div class="cep-search-control"><span class="cep-search-icon">⌕</span><input id="preview-city" class="cep-city-input" type="search" value="Perpignan" placeholder="Nom de commune ou code postal" role="combobox" aria-expanded="false" aria-controls="preview-results" aria-describedby="preview-status"></div><button type="button" class="cep-locate-button" data-cep-locate>📍 Détecter ma ville</button><div id="preview-results" class="cep-search-results" role="listbox" hidden></div><p id="preview-status" class="cep-search-status" role="status">Saisissez au moins deux lettres ou un code postal.</p></div>
+    <div class="cep-coverage"><strong>34 746 communes</strong><span>Métropole et Corse</span></div>
+  </div>
+  <p class="cep-stale" data-cep-stale hidden>Attention : la dernière mise à jour disponible a plus de 8 heures.</p>
+  <div class="cep-tabs" role="tablist">
+    <button type="button" class="cep-tab cep-tab-map is-active" data-cep-tab="map" aria-selected="true">🗺️ Cartes météo</button>
+    <button type="button" class="cep-tab" data-cep-tab="general" aria-selected="false">🌤️ Prévisions générales</button>
+    <button type="button" class="cep-tab cep-tab-storm" data-cep-tab="storms" aria-selected="false">⛈️ Prévisions orages</button>
+    <button type="button" class="cep-tab cep-tab-snow" data-cep-tab="snow" aria-selected="false">❄️ Risque de neige</button>
+  </div>
+  <div class="cep-panel cep-map-panel" data-cep-panel="map">
+    <section class="cep-card cepm-card" data-cepm-app data-base-url="../build/test-cep" data-variable="temperature" data-timezone="Europe/Paris" data-animation="1" data-module-version="1.0.0" style="--cepm-height:760px">
+      <header class="cep-header cepm-header"><div><p class="cep-kicker">MODÈLE DÉTERMINISTE • JUSQU'À +240 H</p><h2>Cartes CEP / ECMWF IFS — résolution 0,25°</h2><p class="cep-meta" data-cepm-run>Chargement du dernier run CEP…</p></div><div class="cep-badge">CEP<br><strong>0,25°</strong></div></header>
+      <div class="cepm-toolbar"><div class="cepm-field cepm-layer-picker"><span>Paramètre</span><button type="button" class="cepm-layer-trigger" data-cepm-menu-toggle aria-expanded="false"><span data-cepm-current-layer>Température à 2 m</span><span class="cepm-layer-chevron">⌄</span></button></div><div class="cepm-time-controls"><button type="button" data-cepm-previous>◀</button><button type="button" data-cepm-play>▶</button><button type="button" data-cepm-next>▶</button></div><div class="cepm-validity"><span>Prévision valable</span><strong data-cepm-validity>—</strong><small data-cepm-lead>—</small></div></div>
+      <div class="cepm-layer-menu" data-cepm-layer-menu hidden><div class="cepm-layer-menu-head"><div><strong>Choisir une carte CEP</strong><small>Paramètres disponibles dans ECMWF Open Data</small></div><button type="button" data-cepm-menu-close>×</button></div><div class="cepm-layer-grid" data-cepm-layer-grid></div></div>
+      <p class="cep-stale" data-cepm-stale hidden>Production ancienne.</p>
+      <div class="cepm-viewport" data-cepm-viewport>
+        <div class="cepm-scene" data-cepm-scene><canvas class="cepm-weather-canvas" data-cepm-weather></canvas><canvas class="cepm-vector-canvas" data-cepm-vectors></canvas></div><canvas class="cepm-label-canvas" data-cepm-labels></canvas>
+        <div class="cepm-probe" data-cepm-probe hidden><strong data-cepm-probe-value>—</strong><span data-cepm-probe-label>Valeur CEP</span></div>
+        <div class="cepm-map-titlebar"><strong data-cepm-map-title>Carte CEP</strong><span data-cepm-map-run>Run CEP —</span></div><div class="cepm-map-date" data-cepm-map-date>Échéance —</div>
+        <div class="cepm-map-buttons"><span class="cepm-zoom-level" data-cepm-zoom-level>100 %</span><button type="button" data-cepm-zoom-in>+</button><button type="button" data-cepm-zoom-out>−</button><button type="button" data-cepm-reset>⌂</button><button type="button" data-cepm-fullscreen>⛶</button></div>
+        <div class="cepm-legend" data-cepm-legend></div><a class="cepm-map-brand" href="https://www.alertes-meteo.com/">www.alertes-meteo.com • Module v1.0.0</a><div class="cepm-loading" data-cepm-loading>Chargement de la carte…</div><div class="cepm-error" data-cepm-error hidden></div>
+      </div>
+      <div class="cepm-timeline"><input data-cepm-slider type="range" min="0" max="0" value="0"><div class="cepm-timeline-labels"><span>Run</span><span>Échéance maximale</span></div></div>
+      <footer class="cep-footer"><span data-cepm-generated>Mise à jour…</span></footer>
+    </section>
+  </div>
+  <div class="cep-panel" data-cep-panel="general" hidden>
+    <div class="cep-table-wrap cep-general-wrap"><table class="cep-table"><thead><tr><th>Date</th><th>Heure</th><th>Temps</th><th>T°</th><th>Hum.</th><th>Pluie</th><th>Nuages</th><th>Vent</th><th>Rafales</th><th>Pression</th></tr></thead><tbody data-cep-body-general><tr><td colspan="10" class="cep-loading">Chargement…</td></tr></tbody></table></div>
+    <section class="cep-charts"><article class="cep-chart-card"><h3 data-cep-chart-title-temperature>Températures</h3><div class="cep-chart" data-cep-chart-temperature></div></article><article class="cep-chart-card"><h3 data-cep-chart-title-pressure>Pression</h3><div class="cep-chart" data-cep-chart-pressure></div></article><article class="cep-chart-card"><h3 data-cep-chart-title-rain>Précipitations</h3><p data-cep-rain-total></p><div class="cep-chart" data-cep-chart-rain></div></article><article class="cep-chart-card"><h3 data-cep-chart-title-wind>Vent</h3><div class="cep-chart" data-cep-chart-wind></div></article></section>
+  </div>
+  <div class="cep-panel" data-cep-panel="storms" hidden><p class="cep-storm-summary" data-cep-storm-summary>Chargement…</p><div class="cep-top-scroll" data-cep-top-scroll="storms" hidden><div></div></div><div class="cep-table-wrap cep-storm-wrap" data-cep-scroll-wrap="storms"><table class="cep-table cep-storm-table"><thead><tr><th>Date</th><th>Heure</th><th>Risque</th><th>MUCAPE</th><th>LCL</th><th>Foudre</th><th>Grêle</th><th>Pluie conv.</th><th>Graupel</th><th>Pluie 1h</th><th>Rafales</th><th>Type</th><th>Détails</th></tr></thead><tbody data-cep-body-storms><tr><td colspan="13">Chargement…</td></tr></tbody></table></div></div>
+  <div class="cep-panel" data-cep-panel="snow" hidden><p class="cep-snow-summary" data-cep-snow-summary>Chargement…</p><div class="cep-top-scroll" data-cep-top-scroll="snow" hidden><div></div></div><div class="cep-table-wrap cep-snow-wrap" data-cep-scroll-wrap="snow"><table class="cep-table cep-snow-table"><thead><tr><th>Date</th><th>Heure</th><th>Risque</th><th>Phase</th><th>Neige 1h</th><th>Neige 3h</th><th>Neige 6h</th><th>Tenue</th><th>Pression</th><th>Hum.</th><th>Vent</th><th>Cumul</th><th>Détails</th></tr></thead><tbody data-cep-body-snow><tr><td colspan="13">Chargement…</td></tr></tbody></table></div></div>
+  <footer class="cep-footer"><span data-cep-generated>Mise à jour…</span><span><a href="https://www.alertes-meteo.com/">www.alertes-meteo.com</a></span><span class="cep-plugin-version">Module CEP v1.0.0</span></footer>
+</section>
+</main>
+<script src="../wordpress/cep-ecmwf-france/assets/cep-meteo.js"></script>
+<script src="../wordpress/cep-ecmwf-france/assets/cep-map.js"></script>
+</body>
+</html>
