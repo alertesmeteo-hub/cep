@@ -24,7 +24,7 @@ from scipy.spatial import cKDTree
 
 
 MAP_SCHEMA_VERSION = 6
-MODULE_VERSION = "1.0.0"
+MODULE_VERSION = "1.1.0"
 # Une valeur numérique tous les deux pixels cartographiques : le survol reste
 # précis à l'échelle d'une commune sans multiplier déraisonnablement le poids
 # de la branche de données.
@@ -965,6 +965,137 @@ class CEPMapRenderer:
                 compressed.write(header)
                 compressed.write(encoded.tobytes(order="C"))
 
+    @staticmethod
+    def _edge_point(
+        edge: int,
+        x: int,
+        y: int,
+        values: tuple[float, float, float, float],
+        level: float,
+        stride: int,
+    ) -> tuple[float, float]:
+        top_left, top_right, bottom_right, bottom_left = values
+        endpoints = {
+            0: ((x, y, top_left), (x + 1, y, top_right)),
+            1: ((x + 1, y, top_right), (x + 1, y + 1, bottom_right)),
+            2: ((x, y + 1, bottom_left), (x + 1, y + 1, bottom_right)),
+            3: ((x, y, top_left), (x, y + 1, bottom_left)),
+        }
+        first, second = endpoints[edge]
+        difference = second[2] - first[2]
+        fraction = 0.5 if abs(difference) < 1.0e-9 else (level - first[2]) / difference
+        fraction = max(0.0, min(1.0, fraction))
+        return (
+            (first[0] + fraction * (second[0] - first[0])) * stride,
+            (first[1] + fraction * (second[1] - first[1])) * stride,
+        )
+
+    def _wind_contour_path(
+        self,
+        field: np.ndarray,
+        levels: Sequence[float],
+        stride: int = 14,
+    ) -> str:
+        sampled = np.asarray(field[::stride, ::stride], dtype=np.float32)
+        # Paires d'arêtes Marching Squares : haut, droite, bas, gauche.
+        cases = {
+            1: ((3, 0),), 2: ((0, 1),), 3: ((3, 1),),
+            4: ((1, 2),), 5: ((3, 0), (1, 2)), 6: ((0, 2),),
+            7: ((3, 2),), 8: ((2, 3),), 9: ((0, 2),),
+            10: ((0, 1), (2, 3)), 11: ((1, 2),),
+            12: ((1, 3),), 13: ((0, 1),), 14: ((3, 0),),
+        }
+        commands: list[str] = []
+        for level in levels:
+            for y in range(sampled.shape[0] - 1):
+                for x in range(sampled.shape[1] - 1):
+                    values = (
+                        float(sampled[y, x]),
+                        float(sampled[y, x + 1]),
+                        float(sampled[y + 1, x + 1]),
+                        float(sampled[y + 1, x]),
+                    )
+                    if not all(math.isfinite(value) for value in values):
+                        continue
+                    case = sum(
+                        bit for bit, value in zip((1, 2, 4, 8), values)
+                        if value >= level
+                    )
+                    for first_edge, second_edge in cases.get(case, ()):
+                        first = self._edge_point(
+                            first_edge, x, y, values, level, stride
+                        )
+                        second = self._edge_point(
+                            second_edge, x, y, values, level, stride
+                        )
+                        commands.append(
+                            f"M{first[0]:.1f},{first[1]:.1f} "
+                            f"L{second[0]:.1f},{second[1]:.1f}"
+                        )
+        return " ".join(commands)
+
+    def _wind_arrow_path(
+        self,
+        u_wind: np.ndarray,
+        v_wind: np.ndarray,
+        spacing: int = 135,
+    ) -> str:
+        commands: list[str] = []
+        length = 24.0
+        head = 6.5
+        for y in range(spacing // 2, self.height, spacing):
+            for x in range(spacing // 2, self.width, spacing):
+                u_value = float(u_wind[y, x])
+                v_value = float(v_wind[y, x])
+                speed = math.hypot(u_value, v_value)
+                if not math.isfinite(speed) or speed < 2.0:
+                    continue
+                dx = u_value / speed
+                dy = -v_value / speed
+                start_x = x - dx * length / 2.0
+                start_y = y - dy * length / 2.0
+                end_x = x + dx * length / 2.0
+                end_y = y + dy * length / 2.0
+                normal_x, normal_y = -dy, dx
+                left_x = end_x - dx * head + normal_x * head * 0.55
+                left_y = end_y - dy * head + normal_y * head * 0.55
+                right_x = end_x - dx * head - normal_x * head * 0.55
+                right_y = end_y - dy * head - normal_y * head * 0.55
+                commands.append(
+                    f"M{start_x:.1f},{start_y:.1f} L{end_x:.1f},{end_y:.1f} "
+                    f"M{left_x:.1f},{left_y:.1f} L{end_x:.1f},{end_y:.1f} "
+                    f"L{right_x:.1f},{right_y:.1f}"
+                )
+        return " ".join(commands)
+
+    def _write_wind_overlay(
+        self,
+        speed: np.ndarray,
+        u_wind: np.ndarray,
+        v_wind: np.ndarray,
+        destination: Path,
+        contour_interval: float,
+    ) -> None:
+        maximum = float(np.nanmax(speed)) if np.any(np.isfinite(speed)) else 0.0
+        levels = np.arange(contour_interval, maximum, contour_interval)
+        contour_path = self._wind_contour_path(speed, levels)
+        arrow_path = self._wind_arrow_path(u_wind, v_wind)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        svg = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {self.width} '
+            f'{self.height}" preserveAspectRatio="none" '
+            'shape-rendering="geometricPrecision">\n'
+            f'<path d="{contour_path}" fill="none" stroke="#152432" '
+            'stroke-opacity="0.78" stroke-width="1.15" '
+            'stroke-linejoin="round" stroke-linecap="round"/>\n'
+            f'<path d="{arrow_path}" fill="none" stroke="#0b151e" '
+            'stroke-opacity="0.92" stroke-width="1.35" '
+            'stroke-linejoin="round" stroke-linecap="round"/>\n'
+            '</svg>\n'
+        )
+        destination.write_text(svg, encoding="utf-8")
+
     def _pixel(self, latitude: float, longitude: float) -> tuple[int, int]:
         west = float(self.bounds["west"])
         east = float(self.bounds["east"])
@@ -1111,6 +1242,28 @@ class CEPMapRenderer:
     ) -> None:
         files: dict[str, str] = {}
         probes: dict[str, str] = {}
+        vectors: dict[str, str] = {}
+        wind_u = fields.get("wind_u_kmh")
+        wind_v = fields.get("wind_v_kmh")
+        if wind_u is not None and wind_v is not None:
+            for layer_key, field_name, interval in (
+                ("vent", "wind_speed_kmh", 10.0),
+                ("rafales", "wind_gust_kmh", 20.0),
+            ):
+                speed = fields.get(field_name)
+                if speed is None or not np.any(np.isfinite(speed)):
+                    continue
+                destination = (
+                    self.output_directory / "vectors" / layer_key /
+                    f"{lead_hour:03d}.svg"
+                )
+                self._write_wind_overlay(
+                    np.asarray(speed), np.asarray(wind_u), np.asarray(wind_v),
+                    destination, interval,
+                )
+                vectors[layer_key] = (
+                    f"maps/vectors/{layer_key}/{destination.name}"
+                )
         for spec in LAYER_SPECS:
             values = fields.get(spec.field)
             if values is None or not np.any(np.isfinite(values)):
@@ -1149,6 +1302,7 @@ class CEPMapRenderer:
                 "valid_time": valid_time.isoformat().replace("+00:00", "Z"),
                 "files": files,
                 "probes": probes,
+                "vectors": vectors,
             }
         )
 

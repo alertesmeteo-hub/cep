@@ -186,7 +186,8 @@ const manifest = {
     steps: [{
         lead_hour: 7, valid_time: '2026-08-21T10:00:00Z',
         files: { temperature: 'maps/temperature/007.webp' },
-        probes: { temperature: 'maps/values/temperature/007.hkv.gz' }
+        probes: { temperature: 'maps/values/temperature/007.hkv.gz' },
+        vectors: { temperature: 'maps/vectors/temperature/007.svg' }
     }]
 };
 const places = { places: [['Paris', 2100000, 48.8566, 2.3522]] };
@@ -229,6 +230,7 @@ async function fetchMock(url) {
     if (String(url).includes('index.json')) return response(manifest);
     if (String(url).includes('communes.json')) return response(places);
     if (String(url).includes('frontieres.svg')) return response(svg);
+    if (String(url).includes('/vectors/')) return response(svg);
     if (String(url).includes('.hkv')) return response(probeBuffer);
     throw new Error(`URL inattendue: ${url}`);
 }
@@ -303,7 +305,7 @@ vm.runInNewContext(fs.readFileSync(scriptPath, 'utf8'), context, { filename: scr
     } else {
         assert.ok(counters.fallbackImages >= 1, 'Le rendu Canvas de secours n’a pas été dessiné');
     }
-    assert.ok(counters.strokes >= 3, 'Les frontières vectorielles n’ont pas été dessinées');
+    assert.ok(counters.strokes >= 6, 'Les frontières et vecteurs météo n’ont pas été dessinés');
     assert.ok(counters.labels >= 1, 'Les noms de communes n’ont pas été dessinés');
 
     elements.viewport.dispatch('pointermove', {

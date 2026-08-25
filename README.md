@@ -9,7 +9,8 @@ Ce dépôt construit une chaîne directe **ECMWF Open Data IFS 0,25° → GitHub
 - runs principaux 00 UTC et 12 UTC ;
 - échéances toutes les 3 h jusqu'à +144 h, puis toutes les 6 h jusqu'à +240 h ;
 - température, point de rosée, humidité, vent, rafales, pression, pluie, neige, nuages et CAPE selon disponibilité dans les produits ouverts ;
-- cartes WebP interactives, valeur sous la souris et prévisions par commune.
+- cartes WebP en plages colorées lissées, valeur sous la souris et prévisions par commune ;
+- isolignes et flèches directionnelles sur les cartes de vent et de rafales.
 
 Les données IFS Open Data sont en GRIB2 et publiées sous licence CC BY 4.0. Aucune clé API ECMWF n'est nécessaire.
 
@@ -19,6 +20,9 @@ Les données IFS Open Data sont en GRIB2 et publiées sous licence CC BY 4.0. Au
 2. Dans **Settings → Actions → General → Workflow permissions**, activez **Read and write permissions**.
 3. Lancez **Actions → Mise à jour CEP France → Run workflow**.
 4. Vérifiez ensuite la branche `data` et son fichier `index.json`.
+
+Le workflow automatique est lancé une seule fois par jour à 08 h 30 UTC,
+soit vers 10 h en France (10 h 30 en été, 9 h 30 en hiver).
 
 Commande locale équivalente :
 
@@ -32,7 +36,7 @@ python scripts/update_cep_france.py \
 
 ## Installation WordPress
 
-Installez le ZIP séparé `cep-ecmwf-france-v1.0.0.zip`, activez-le, puis utilisez :
+Installez le ZIP séparé `cep-ecmwf-france-v1.1.0.zip`, activez-le, puis utilisez :
 
 ```text
 [cep_meteo]
@@ -56,4 +60,4 @@ https://raw.githubusercontent.com/alertesmeteo-hub/cep/data
 - [Client officiel ecmwf-opendata](https://github.com/ecmwf/ecmwf-opendata)
 - API Découpage administratif de la République française pour la recherche des communes
 
-Site : [www.alertes-meteo.com](https://www.alertes-meteo.com/) — module v1.0.0.
+Site : [www.alertes-meteo.com](https://www.alertes-meteo.com/) — module v1.1.0.

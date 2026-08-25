@@ -3,7 +3,7 @@
  * Plugin Name: CEP / ECMWF France — Tableaux et cartes
  * Plugin URI: https://github.com/alertesmeteo-hub/cep
  * Description: Cartes interactives et prévisions du modèle déterministe CEP/ECMWF IFS pour la France métropolitaine et la Corse.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Alertes Météo Hub
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('CEP_VERSION', '1.0.0');
+define('CEP_VERSION', '1.1.0');
 define('CEP_RELEASE_DATE', '25/08/2026');
 define('CEP_OPTION_BASE_URL', 'cep_national_data_base_url');
 define(

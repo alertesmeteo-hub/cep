@@ -127,7 +127,9 @@
         var gesture = null;
         var places = [];
         var placeBuckets = new Map();
-        var vectorDefinition = null;
+        var baseVectorDefinition = null;
+        var weatherVectorDefinition = null;
+        var vectorLoadToken = 0;
         var currentWeatherImage = null;
         var currentProbe = null;
         var probeLoadToken = 0;
@@ -1079,6 +1081,11 @@
             var token = ++loadToken;
             var nextSource = versioned(step.files[currentLayer]);
             loadProbe(step);
+            loadWeatherVectorOverlay(
+                step.vectors && step.vectors[currentLayer]
+                    ? step.vectors[currentLayer]
+                    : null
+            );
             var loader = new Image();
             loader.crossOrigin = 'anonymous';
             loader.onload = function () {
@@ -1316,11 +1323,7 @@
             fallbackContext.restore();
         }
 
-        function loadVectorOverlay(path) {
-            if (!path || !vectorContext || typeof window.Path2D !== 'function') {
-                return Promise.resolve();
-            }
-            return fetchText(versioned(path)).then(function (source) {
+        function parseVectorOverlay(source) {
                 var documentSvg = new DOMParser().parseFromString(
                     source,
                     'image/svg+xml'
@@ -1344,46 +1347,76 @@
                         };
                     }
                 );
-                vectorDefinition = {
+                return {
                     width: viewBox[2],
                     height: viewBox[3],
                     paths: paths
                 };
+        }
+
+        function loadVectorOverlay(path) {
+            if (!path || !vectorContext || typeof window.Path2D !== 'function') {
+                return Promise.resolve();
+            }
+            return fetchText(versioned(path)).then(function (source) {
+                baseVectorDefinition = parseVectorOverlay(source);
                 scheduleRender();
             }).catch(function () {
-                vectorDefinition = null;
+                baseVectorDefinition = null;
+            });
+        }
+
+        function loadWeatherVectorOverlay(path) {
+            var token = ++vectorLoadToken;
+            weatherVectorDefinition = null;
+            scheduleRender();
+            if (!path || !vectorContext || typeof window.Path2D !== 'function') {
+                return Promise.resolve();
+            }
+            return fetchText(versioned(path)).then(function (source) {
+                if (token !== vectorLoadToken) { return; }
+                weatherVectorDefinition = parseVectorOverlay(source);
+                scheduleRender();
+            }).catch(function () {
+                if (token === vectorLoadToken) {
+                    weatherVectorDefinition = null;
+                    scheduleRender();
+                }
             });
         }
 
         function drawVectors(width, height, pixelRatio) {
-            if (!vectorContext || !vectorDefinition) {
+            if (!vectorContext) {
                 return;
             }
             resizeCanvas(vectorCanvas, width, height, pixelRatio);
             vectorContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
             vectorContext.clearRect(0, 0, width, height);
-            var horizontalScale = transform.scale * width / vectorDefinition.width;
-            var verticalScale = transform.scale * height / vectorDefinition.height;
-            var offsetX = width / 2 + transform.x - transform.scale * width / 2;
-            var offsetY = height / 2 + transform.y - transform.scale * height / 2;
-            vectorContext.setTransform(
-                pixelRatio * horizontalScale,
-                0,
-                0,
-                pixelRatio * verticalScale,
-                pixelRatio * offsetX,
-                pixelRatio * offsetY
-            );
-            vectorDefinition.paths.forEach(function (entry) {
-                if (entry.department && transform.scale > 3.2) {
-                    return;
-                }
-                vectorContext.strokeStyle = entry.colour;
-                vectorContext.globalAlpha = entry.opacity;
-                vectorContext.lineCap = entry.lineCap;
-                vectorContext.lineJoin = entry.lineJoin;
-                vectorContext.lineWidth = entry.width / horizontalScale;
-                vectorContext.stroke(entry.path);
+            [weatherVectorDefinition, baseVectorDefinition].forEach(function (definition) {
+                if (!definition) { return; }
+                var horizontalScale = transform.scale * width / definition.width;
+                var verticalScale = transform.scale * height / definition.height;
+                var offsetX = width / 2 + transform.x - transform.scale * width / 2;
+                var offsetY = height / 2 + transform.y - transform.scale * height / 2;
+                vectorContext.setTransform(
+                    pixelRatio * horizontalScale,
+                    0,
+                    0,
+                    pixelRatio * verticalScale,
+                    pixelRatio * offsetX,
+                    pixelRatio * offsetY
+                );
+                definition.paths.forEach(function (entry) {
+                    if (entry.department && transform.scale > 3.2) {
+                        return;
+                    }
+                    vectorContext.strokeStyle = entry.colour;
+                    vectorContext.globalAlpha = entry.opacity;
+                    vectorContext.lineCap = entry.lineCap;
+                    vectorContext.lineJoin = entry.lineJoin;
+                    vectorContext.lineWidth = entry.width / horizontalScale;
+                    vectorContext.stroke(entry.path);
+                });
             });
             vectorContext.globalAlpha = 1;
         }

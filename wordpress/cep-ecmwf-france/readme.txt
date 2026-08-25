@@ -3,7 +3,7 @@ Contributors: alertesmeteo
 Tags: meteo, cep, ecmwf, ifs, carte, previsions, avada
 Requires at least: 5.8
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,10 @@ Les données proviennent directement d'ECMWF Open Data, modèle IFS déterminist
 Exemple : [cep_meteo code="75056" departement="75" ville="Paris" heures="240"]
 
 == Changelog ==
+
+= 1.1.0 =
+* Rendu en plages colorées lissées sur toutes les cartes CEP.
+* Isolignes de vitesse et flèches directionnelles sur les cartes Vent moyen et Rafales.
 
 = 1.0.0 =
 * Première version indépendante CEP/ECMWF IFS 0,25°.

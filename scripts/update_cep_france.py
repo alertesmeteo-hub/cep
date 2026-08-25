@@ -37,7 +37,7 @@ from cep_maps import DEFAULT_BOUNDS, CEPMapRenderer
 
 
 LOGGER = logging.getLogger("cep.france")
-PIPELINE_VERSION = "1.0.0"
+PIPELINE_VERSION = "1.1.0"
 DATASET_PAGE = "https://www.ecmwf.int/en/forecasts/datasets/open-data"
 DEFAULT_CURRENT_METADATA_URL = (
     "https://raw.githubusercontent.com/alertesmeteo-hub/"
@@ -131,6 +131,8 @@ MAP_FIELDS = {
     "graupel_mm",
     "wind_speed_kmh",
     "wind_gust_kmh",
+    "wind_u_kmh",
+    "wind_v_kmh",
     "pressure_hpa",
     "surface_pressure_hpa",
     "cloud_cover_pct",
@@ -777,6 +779,8 @@ def transform_step(
         "wind_speed_kmh": rounded(wind_speed, 0),
         "wind_direction_deg": rounded(wind_direction, 0),
         "wind_gust_kmh": rounded(gust_speed, 0),
+        "wind_u_kmh": rounded(u_wind * 3.6, 1),
+        "wind_v_kmh": rounded(v_wind * 3.6, 1),
         "pressure_hpa": rounded(pressure, 0),
         "pressure_surface_hpa": rounded(surface_pressure, 0),
         "surface_pressure_hpa": rounded(surface_pressure, 0),
