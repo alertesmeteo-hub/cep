@@ -1,12 +1,12 @@
 Limites départementales françaises
 ==================================
 
-Fichier : departements-version-simplifiee.geojson
+Fichier : departements.geojson
 Source : https://github.com/gregoiredavid/france-geojson
 Données d'origine : IGN Admin Express COG, édition 2018
 Licence : Licence Ouverte / Open Licence
-Conversion : WGS84 GeoJSON, précision 0,00001°, simplification légère à 5 %
-SHA-256 : C08A1AD48299763B50EF649F05A911C1021500C94719A1AA22A9D06191E43FC3
+Conversion : WGS84 GeoJSON, précision 0,00001°, simplification détaillée à 25 %
+SHA-256 : 6F551C26EBE6A02EBBAB47CA4309B03A8A6C5B24D454713A00D921210C105279
 
 Ce fichier est embarqué afin que la production GitHub Actions ne dépende pas
 d'un service cartographique externe. Si le fichier est absent ou invalide, le

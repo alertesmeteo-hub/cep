@@ -37,13 +37,13 @@ from cep_maps import DEFAULT_BOUNDS, CEPMapRenderer
 
 
 LOGGER = logging.getLogger("cep.france")
-PIPELINE_VERSION = "1.3.0"
+PIPELINE_VERSION = "1.4.0"
 DATASET_PAGE = "https://www.ecmwf.int/en/forecasts/datasets/open-data"
 DEFAULT_CURRENT_METADATA_URL = (
     "https://raw.githubusercontent.com/alertesmeteo-hub/"
     "cep/data/index.json"
 )
-USER_AGENT = "alertes-meteo.com/cep-ecmwf-france/1.3.0"
+USER_AGENT = "alertes-meteo.com/cep-ecmwf-france/1.4.0"
 
 # Grille mondiale régulière IFS Open Data 0,25°.
 CEP_NI = 1440
@@ -1022,7 +1022,7 @@ def build_product(
             Path(__file__).resolve().parents[1]
             / "config"
             / "france"
-            / "departements-version-simplifiee.geojson"
+            / "departements.geojson"
         ),
         pregridded=True,
     )

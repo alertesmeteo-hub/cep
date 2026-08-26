@@ -74,6 +74,7 @@ const counters = { draws: 0, textures: 0, fallbackImages: 0, strokes: 0, labels:
 function make2dContext() {
     return {
         setTransform() {}, clearRect() {}, fillRect() {}, save() {}, restore() {},
+        beginPath() {}, moveTo() {}, lineTo() {},
         translate() {}, scale() {}, drawImage() { counters.fallbackImages += 1; },
         getImageData() { return { data: new Uint8ClampedArray([128, 0, 128, 244]) }; },
         measureText(text) { return { width: String(text).length * 6 }; },

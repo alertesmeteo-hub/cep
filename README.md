@@ -9,8 +9,10 @@ Ce dépôt construit une chaîne directe **ECMWF Open Data IFS 0,25° → GitHub
 - runs principaux 00 UTC et 12 UTC ;
 - échéances toutes les 3 h jusqu'à +144 h, puis toutes les 6 h jusqu'à +240 h ;
 - température, point de rosée, humidité, vent, rafales, pression, pluie, neige, nuages et CAPE selon disponibilité dans les produits ouverts ;
-- cartes WebP en plages colorées lissées, valeur sous la souris et prévisions par commune ;
-- isolignes et flèches directionnelles sur les cartes de vent et de rafales.
+- cartes WebP en isovaleurs remplies, lissées par interpolation bicubique, valeur sous la souris et prévisions par commune ;
+- isobares de pression tous les 4 hPa et flèches directionnelles lisibles sur les cartes de vent et de rafales ;
+- limites départementales détaillées issues des tracés IGN à 25 %, intégrées au dépôt ;
+- module et tableaux élargis jusqu'à 1 480 px sur les grands écrans.
 
 Les données IFS Open Data sont en GRIB2 et publiées sous licence CC BY 4.0. Aucune clé API ECMWF n'est nécessaire.
 
@@ -36,7 +38,7 @@ python scripts/update_cep_france.py \
 
 ## Installation WordPress
 
-Installez le ZIP séparé `cep-ecmwf-france-v1.1.0.zip`, activez-le, puis utilisez :
+Installez le ZIP séparé `cep-ecmwf-france-v1.4.0.zip`, activez-le, puis utilisez :
 
 ```text
 [cep_meteo]
@@ -59,5 +61,6 @@ https://raw.githubusercontent.com/alertesmeteo-hub/cep/data
 - [ECMWF Open Data](https://www.ecmwf.int/en/forecasts/datasets/open-data)
 - [Client officiel ecmwf-opendata](https://github.com/ecmwf/ecmwf-opendata)
 - API Découpage administratif de la République française pour la recherche des communes
+- [France GeoJSON](https://github.com/gregoiredavid/france-geojson), tracés IGN Admin Express COG sous Licence Ouverte
 
-Site : [www.alertes-meteo.com](https://www.alertes-meteo.com/) — module v1.1.0.
+Site : [www.alertes-meteo.com](https://www.alertes-meteo.com/) — module v1.4.0.

@@ -84,7 +84,7 @@ class CEPGridTests(unittest.TestCase):
             ROOT
             / "config"
             / "france"
-            / "departements-version-simplifiee.geojson"
+            / "departements.geojson"
         )
         with tempfile.TemporaryDirectory() as directory:
             output_directory = Path(directory) / "maps"
@@ -104,6 +104,34 @@ class CEPGridTests(unittest.TestCase):
         self.assertIn('data-cepm-quality="precise"', overlay)
         self.assertIn('data-cepm-hide-deep="0"', overlay)
         self.assertGreater(overlay.count("M"), 100)
+
+    def test_wind_overlay_uses_pressure_isobars_and_screen_arrows(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output_directory = Path(directory) / "maps"
+            renderer = CEPMapRenderer(
+                np.empty(0),
+                np.empty(0),
+                output_directory,
+                width=224,
+                height=168,
+                pregridded=True,
+            )
+            x_axis = np.linspace(0.0, 1.0, 224)
+            pressure = np.tile(1004.0 + x_axis * 16.0, (168, 1))
+            wind_u = np.full((168, 224), 24.0)
+            wind_v = np.full((168, 224), 8.0)
+            destination = output_directory / "vectors" / "vent" / "000.svg"
+            renderer._write_wind_overlay(
+                wind_u, wind_v, destination, pressure
+            )
+            overlay = destination.read_text(encoding="utf-8")
+
+        self.assertIn('data-cepm-role="isobars"', overlay)
+        self.assertIn('data-cepm-interval="4"', overlay)
+        self.assertIn('data-cepm-role="isobar-labels"', overlay)
+        self.assertIn('data-cepm-labels="', overlay)
+        self.assertIn('data-cepm-role="wind-arrows"', overlay)
+        self.assertIn('data-cepm-points="', overlay)
 
 
 if __name__ == "__main__":

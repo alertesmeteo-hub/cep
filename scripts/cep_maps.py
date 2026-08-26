@@ -23,8 +23,8 @@ from PIL import Image
 from scipy.spatial import cKDTree
 
 
-MAP_SCHEMA_VERSION = 8
-MODULE_VERSION = "1.3.0"
+MAP_SCHEMA_VERSION = 9
+MODULE_VERSION = "1.4.0"
 # Une valeur numérique tous les deux pixels cartographiques : le survol reste
 # précis à l'échelle d'une commune sans multiplier déraisonnablement le poids
 # de la branche de données.
@@ -995,11 +995,12 @@ class CEPMapRenderer:
             (first[1] + fraction * (second[1] - first[1])) * stride,
         )
 
-    def _wind_contour_path(
+    def _contour_path(
         self,
         field: np.ndarray,
         levels: Sequence[float],
-        stride: int = 14,
+        stride: int = 8,
+        label_candidates: dict[float, list[tuple[float, float]]] | None = None,
     ) -> str:
         sampled = np.asarray(field[::stride, ::stride], dtype=np.float32)
         # Paires d'arêtes Marching Squares : haut, droite, bas, gauche.
@@ -1037,30 +1038,124 @@ class CEPMapRenderer:
                             f"M{first[0]:.1f},{first[1]:.1f} "
                             f"L{second[0]:.1f},{second[1]:.1f}"
                         )
+                        if label_candidates is not None:
+                            label_candidates.setdefault(float(level), []).append((
+                                (first[0] + second[0]) / 2.0,
+                                (first[1] + second[1]) / 2.0,
+                            ))
         return " ".join(commands)
 
-    def _wind_arrow_path(
+    def _isobar_label_points(
+        self,
+        candidates: dict[float, list[tuple[float, float]]],
+        levels: Sequence[float],
+    ) -> str:
+        labels: list[str] = []
+        targets = (
+            (self.width * 0.28, self.height * 0.32),
+            (self.width * 0.70, self.height * 0.68),
+        )
+        for level_index, level in enumerate(levels):
+            available = list(candidates.get(float(level), ()))
+            selected: list[tuple[float, float]] = []
+            for target_index in range(len(targets)):
+                if not available:
+                    break
+                target_x, target_y = targets[
+                    (target_index + level_index) % len(targets)
+                ]
+                best = min(
+                    available,
+                    key=lambda point: (
+                        ((point[0] - target_x) / self.width) ** 2
+                        + ((point[1] - target_y) / self.height) ** 2
+                    ),
+                )
+                if any(
+                    math.hypot(best[0] - previous[0], best[1] - previous[1])
+                    < min(self.width, self.height) * 0.22
+                    for previous in selected
+                ):
+                    continue
+                selected.append(best)
+                available = [
+                    point for point in available
+                    if math.hypot(point[0] - best[0], point[1] - best[1])
+                    >= min(self.width, self.height) * 0.22
+                ]
+            labels.extend(
+                f"{point[0]:.1f},{point[1]:.1f},{level:.0f}"
+                for point in selected
+            )
+        return ";".join(labels)
+
+    @staticmethod
+    def _distance_to_isobar(value: float, interval: float) -> float:
+        if not math.isfinite(value) or interval <= 0:
+            return -1.0
+        return abs(value - round(value / interval) * interval)
+
+    def _wind_arrow_paths(
         self,
         u_wind: np.ndarray,
         v_wind: np.ndarray,
-        spacing: int = 135,
-    ) -> str:
+        pressure: np.ndarray | None = None,
+        isobar_interval: float = 4.0,
+        spacing: int = 112,
+    ) -> tuple[str, str]:
         commands: list[str] = []
-        length = 24.0
-        head = 6.5
+        points: list[str] = []
+        # Le tracé SVG compact reste lisible si une ancienne version du module
+        # charge les nouvelles données. Le module courant redessine ces symboles
+        # à taille constante à partir de ``points``.
+        length = 14.0
+        head = 4.2
+        offsets = (
+            (0, 0),
+            (spacing // 4, 0),
+            (-spacing // 4, 0),
+            (0, spacing // 4),
+            (0, -spacing // 4),
+            (spacing // 5, spacing // 5),
+            (-spacing // 5, spacing // 5),
+        )
         for y in range(spacing // 2, self.height, spacing):
             for x in range(spacing // 2, self.width, spacing):
-                u_value = float(u_wind[y, x])
-                v_value = float(v_wind[y, x])
+                arrow_x, arrow_y = x, y
+                if pressure is not None:
+                    candidates: list[tuple[float, int, int]] = []
+                    for offset_x, offset_y in offsets:
+                        candidate_x = x + offset_x
+                        candidate_y = y + offset_y
+                        if not (
+                            0 <= candidate_x < self.width
+                            and 0 <= candidate_y < self.height
+                        ):
+                            continue
+                        pressure_value = float(
+                            pressure[candidate_y, candidate_x]
+                        )
+                        candidates.append((
+                            self._distance_to_isobar(
+                                pressure_value, isobar_interval
+                            ),
+                            candidate_x,
+                            candidate_y,
+                        ))
+                    if candidates:
+                        _score, arrow_x, arrow_y = max(candidates)
+
+                u_value = float(u_wind[arrow_y, arrow_x])
+                v_value = float(v_wind[arrow_y, arrow_x])
                 speed = math.hypot(u_value, v_value)
-                if not math.isfinite(speed) or speed < 2.0:
+                if not math.isfinite(speed) or speed < 5.0:
                     continue
                 dx = u_value / speed
                 dy = -v_value / speed
-                start_x = x - dx * length / 2.0
-                start_y = y - dy * length / 2.0
-                end_x = x + dx * length / 2.0
-                end_y = y + dy * length / 2.0
+                start_x = arrow_x - dx * length / 2.0
+                start_y = arrow_y - dy * length / 2.0
+                end_x = arrow_x + dx * length / 2.0
+                end_y = arrow_y + dy * length / 2.0
                 normal_x, normal_y = -dy, dx
                 left_x = end_x - dx * head + normal_x * head * 0.55
                 left_y = end_y - dy * head + normal_y * head * 0.55
@@ -1071,32 +1166,75 @@ class CEPMapRenderer:
                     f"M{left_x:.1f},{left_y:.1f} L{end_x:.1f},{end_y:.1f} "
                     f"L{right_x:.1f},{right_y:.1f}"
                 )
-        return " ".join(commands)
+                points.append(
+                    f"{arrow_x},{arrow_y},{dx:.4f},{dy:.4f},{speed:.1f}"
+                )
+        return " ".join(commands), ";".join(points)
+
+    @staticmethod
+    def _isobar_levels(pressure: np.ndarray, interval: float = 4.0) -> np.ndarray:
+        finite = np.asarray(pressure, dtype=np.float32)
+        finite = finite[np.isfinite(finite)]
+        finite = finite[(finite >= 870.0) & (finite <= 1085.0)]
+        if not finite.size:
+            return np.empty(0, dtype=np.float32)
+        minimum = float(np.nanpercentile(finite, 0.2))
+        maximum = float(np.nanpercentile(finite, 99.8))
+        first = math.ceil(minimum / interval) * interval
+        last = math.floor(maximum / interval) * interval
+        if last < first:
+            return np.empty(0, dtype=np.float32)
+        return np.arange(first, last + interval * 0.5, interval)
 
     def _write_wind_overlay(
         self,
-        speed: np.ndarray,
         u_wind: np.ndarray,
         v_wind: np.ndarray,
         destination: Path,
-        contour_interval: float,
+        pressure: np.ndarray | None = None,
+        isobar_interval: float = 4.0,
     ) -> None:
-        maximum = float(np.nanmax(speed)) if np.any(np.isfinite(speed)) else 0.0
-        levels = np.arange(contour_interval, maximum, contour_interval)
-        contour_path = self._wind_contour_path(speed, levels)
-        arrow_path = self._wind_arrow_path(u_wind, v_wind)
+        isobar_path = ""
+        isobar_labels = ""
+        if pressure is not None and np.any(np.isfinite(pressure)):
+            levels = self._isobar_levels(pressure, isobar_interval)
+            label_candidates: dict[float, list[tuple[float, float]]] = {}
+            isobar_path = self._contour_path(
+                pressure, levels, label_candidates=label_candidates
+            )
+            isobar_labels = self._isobar_label_points(
+                label_candidates, levels
+            )
+        arrow_path, arrow_points = self._wind_arrow_paths(
+            u_wind,
+            v_wind,
+            pressure=pressure,
+            isobar_interval=isobar_interval,
+        )
         destination.parent.mkdir(parents=True, exist_ok=True)
         svg = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {self.width} '
             f'{self.height}" preserveAspectRatio="none" '
             'shape-rendering="geometricPrecision">\n'
-            f'<path d="{contour_path}" fill="none" stroke="#152432" '
-            'stroke-opacity="0.78" stroke-width="1.15" '
-            'stroke-linejoin="round" stroke-linecap="round"/>\n'
-            f'<path d="{arrow_path}" fill="none" stroke="#0b151e" '
-            'stroke-opacity="0.92" stroke-width="1.35" '
-            'stroke-linejoin="round" stroke-linecap="round"/>\n'
+            f'<path d="{isobar_path}" fill="none" stroke="#172b39" '
+            'stroke-opacity="0.66" stroke-width="0.9" '
+            'stroke-linejoin="round" stroke-linecap="round" '
+            'data-cepm-role="isobars" data-cepm-interval="4"/>\n'
+            f'<path d="" fill="none" stroke="none" '
+            'data-cepm-role="isobar-labels" '
+            f'data-cepm-labels="{isobar_labels}"/>\n'
+            f'<path d="{arrow_path}" fill="none" stroke="#eef7fa" '
+            'stroke-opacity="0.94" stroke-width="4.2" '
+            'stroke-linejoin="round" stroke-linecap="round" '
+            'data-cepm-role="wind-arrow-fallback"/>\n'
+            f'<path d="{arrow_path}" fill="none" stroke="#071923" '
+            'stroke-opacity="0.96" stroke-width="1.35" '
+            'stroke-linejoin="round" stroke-linecap="round" '
+            'data-cepm-role="wind-arrow-fallback"/>\n'
+            f'<path d="" fill="none" stroke="none" '
+            'data-cepm-role="wind-arrows" '
+            f'data-cepm-points="{arrow_points}"/>\n'
             '</svg>\n'
         )
         destination.write_text(svg, encoding="utf-8")
@@ -1343,23 +1481,27 @@ class CEPMapRenderer:
         wind_u = fields.get("wind_u_kmh")
         wind_v = fields.get("wind_v_kmh")
         if wind_u is not None and wind_v is not None:
-            for layer_key, field_name, interval in (
-                ("vent", "wind_speed_kmh", 10.0),
-                ("rafales", "wind_gust_kmh", 20.0),
+            destination = (
+                self.output_directory / "vectors" / "vent" /
+                f"{lead_hour:03d}.svg"
+            )
+            pressure = fields.get("pressure_hpa")
+            self._write_wind_overlay(
+                np.asarray(wind_u),
+                np.asarray(wind_v),
+                destination,
+                np.asarray(pressure) if pressure is not None else None,
+            )
+            vector_path = f"maps/vectors/vent/{destination.name}"
+            for layer_key, field_name in (
+                ("vent", "wind_speed_kmh"),
+                ("rafales", "wind_gust_kmh"),
             ):
                 speed = fields.get(field_name)
                 if speed is None or not np.any(np.isfinite(speed)):
                     continue
-                destination = (
-                    self.output_directory / "vectors" / layer_key /
-                    f"{lead_hour:03d}.svg"
-                )
-                self._write_wind_overlay(
-                    np.asarray(speed), np.asarray(wind_u), np.asarray(wind_v),
-                    destination, interval,
-                )
                 vectors[layer_key] = (
-                    f"maps/vectors/{layer_key}/{destination.name}"
+                    vector_path
                 )
         for spec in LAYER_SPECS:
             values = fields.get(spec.field)
