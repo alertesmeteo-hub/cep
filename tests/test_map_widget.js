@@ -25,7 +25,7 @@ class Element {
     constructor(tagName = 'div') {
         this.tagName = tagName.toUpperCase();
         this.dataset = {};
-        this.style = {};
+        this.style = { setProperty(name, value) { this[name] = String(value); } };
         this.hidden = false;
         this.disabled = false;
         this.textContent = '';
@@ -69,7 +69,10 @@ class Element {
 }
 
 const expectWebgl = process.env.CEPM_DISABLE_WEBGL !== '1';
-const counters = { draws: 0, textures: 0, fallbackImages: 0, strokes: 0, labels: 0 };
+const counters = {
+    draws: 0, textures: 0, fallbackImages: 0, strokes: 0, labels: 0,
+    periodRenders: 0
+};
 
 function make2dContext() {
     return {
@@ -77,6 +80,10 @@ function make2dContext() {
         beginPath() {}, moveTo() {}, lineTo() {},
         translate() {}, scale() {}, drawImage() { counters.fallbackImages += 1; },
         getImageData() { return { data: new Uint8ClampedArray([128, 0, 128, 244]) }; },
+        createImageData(width, height) {
+            return { data: new Uint8ClampedArray(width * height * 4), width, height };
+        },
+        putImageData() { counters.periodRenders += 1; },
         measureText(text) { return { width: String(text).length * 6 }; },
         strokeText() {},
         fillText() { counters.labels += 1; },
@@ -135,13 +142,16 @@ const selectors = [
     'previous', 'play', 'next', 'validity', 'lead', 'run', 'generated', 'stale',
     'viewport', 'map-title', 'map-run', 'map-date', 'loading', 'error', 'slider',
     'legend', 'zoom-in', 'zoom-out', 'reset', 'fullscreen', 'zoom-level',
-    'probe', 'probe-value', 'probe-label'
+    'probe', 'probe-value', 'probe-label', 'single-timeline', 'period',
+    'dual-range', 'period-start', 'period-end', 'period-title',
+    'period-summary', 'period-start-label', 'period-end-label'
 ];
 for (const name of selectors) elements[name] = new Element(name.includes('zoom') || ['previous', 'play', 'next', 'reset', 'fullscreen', 'menu-toggle', 'menu-close'].includes(name) ? 'button' : 'div');
 elements['layer-menu'].hidden = true;
 elements.error.hidden = true;
 elements.stale.hidden = true;
 elements.probe.hidden = true;
+elements.period.hidden = true;
 elements.probe.offsetWidth = 170;
 elements.probe.offsetHeight = 54;
 elements.viewport.clientWidth = 1000;
@@ -182,13 +192,58 @@ const manifest = {
             label: 'Température à 2 m', unit: '°C', group: 'Températures',
             decimals: 1, transparent_below: null, discrete: false,
             stops: [{ value: 0, color: '#0000ff' }, { value: 30, color: '#ff0000' }]
+        },
+        pluie_cumul: {
+            label: 'Précipitations cumulées sur une période', unit: 'mm',
+            group: 'Précipitations', decimals: 1, transparent_below: 0.03,
+            discrete: true, opacity: 255, source_key: null,
+            range_mode: 'difference',
+            stops: [{ value: 0.1, color: '#f5f5f7' }, { value: 30, color: '#fff000' }]
+        },
+        rafales: {
+            label: 'Rafales à 10 m', unit: 'km/h', group: 'Vent', decimals: 0,
+            transparent_below: null, discrete: false, opacity: 244,
+            source_key: null, range_mode: null,
+            stops: [{ value: 0, color: '#edf7e8' }, { value: 160, color: '#25152e' }]
+        },
+        rafales_max: {
+            label: 'Rafales maximales sur une période', unit: 'km/h',
+            group: 'Vent', decimals: 0, transparent_below: null,
+            discrete: false, opacity: 244, source_key: 'rafales',
+            range_mode: 'maximum',
+            stops: [{ value: 0, color: '#edf7e8' }, { value: 160, color: '#25152e' }]
         }
     },
     steps: [{
         lead_hour: 7, valid_time: '2026-08-21T10:00:00Z',
-        files: { temperature: 'maps/temperature/007.webp' },
-        probes: { temperature: 'maps/values/temperature/007.hkv.gz' },
+        files: {
+            temperature: 'maps/temperature/007.webp',
+            pluie_cumul: 'maps/pluie_cumul/007.webp',
+            rafales: 'maps/rafales/007.webp',
+            rafales_max: 'maps/rafales/007.webp'
+        },
+        probes: {
+            temperature: 'maps/values/temperature/007.hkv.gz',
+            pluie_cumul: 'maps/values/pluie_cumul/007.hkv.gz',
+            rafales: 'maps/values/rafales/007.hkv.gz',
+            rafales_max: 'maps/values/rafales/007.hkv.gz'
+        },
         vectors: { temperature: 'maps/vectors/temperature/007.svg' }
+    }, {
+        lead_hour: 10, valid_time: '2026-08-21T13:00:00Z',
+        files: {
+            temperature: 'maps/temperature/010.webp',
+            pluie_cumul: 'maps/pluie_cumul/010.webp',
+            rafales: 'maps/rafales/010.webp',
+            rafales_max: 'maps/rafales/010.webp'
+        },
+        probes: {
+            temperature: 'maps/values/temperature/010.hkv.gz',
+            pluie_cumul: 'maps/values/pluie_cumul/010.hkv.gz',
+            rafales: 'maps/values/rafales/010.hkv.gz',
+            rafales_max: 'maps/values/rafales/010.hkv.gz'
+        },
+        vectors: { rafales: 'maps/vectors/vent/010.svg', rafales_max: 'maps/vectors/vent/010.svg' }
     }]
 };
 const places = { places: [['Paris', 2100000, 48.8566, 2.3522]] };
@@ -363,7 +418,27 @@ vm.runInNewContext(fs.readFileSync(scriptPath, 'utf8'), context, { filename: scr
     for (let index = 0; index < 15; index += 1) elements['zoom-in'].click();
     assert.equal(elements['zoom-level'].textContent, '6400 %');
     assert.equal(elements['zoom-in'].disabled, true);
-    console.log(`Widget cartographique: ${expectWebgl ? 'WebGL' : 'Canvas de secours'}, valeur au survol et zoom 6400 % OK`);
+
+    const layerButtons = elements['layer-grid'].querySelectorAll('[data-cepm-layer-key]');
+    const rainPeriod = layerButtons.find(button =>
+        button.dataset.cepmLayerKey === 'pluie_cumul');
+    assert.ok(rainPeriod, 'La couche de cumul sur une période manque');
+    rainPeriod.click();
+    await new Promise(resolve => setTimeout(resolve, 220));
+    assert.equal(elements.period.hidden, false, 'Les deux curseurs restent masqués');
+    assert.equal(elements['single-timeline'].hidden, true);
+    assert.match(elements['period-summary'].textContent, /H\+7.*H\+10/);
+    assert.ok(counters.periodRenders >= 1, 'La carte de période n’a pas été calculée');
+
+    const gustPeriod = layerButtons.find(button =>
+        button.dataset.cepmLayerKey === 'rafales_max');
+    assert.ok(gustPeriod, 'La couche de rafales maximales manque');
+    gustPeriod.click();
+    await new Promise(resolve => setTimeout(resolve, 220));
+    assert.match(elements['map-title'].textContent, /Rafales maximales/);
+    assert.ok(counters.periodRenders >= 2, 'Le maximum de rafales n’a pas été calculé');
+
+    console.log(`Widget cartographique: ${expectWebgl ? 'WebGL' : 'Canvas de secours'}, zoom et périodes pluie/rafales OK`);
 })().catch(error => {
     console.error(error);
     process.exitCode = 1;

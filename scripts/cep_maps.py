@@ -23,8 +23,8 @@ from PIL import Image
 from scipy.spatial import cKDTree
 
 
-MAP_SCHEMA_VERSION = 9
-MODULE_VERSION = "1.4.0"
+MAP_SCHEMA_VERSION = 10
+MODULE_VERSION = "1.5.0"
 # Une valeur numérique tous les deux pixels cartographiques : le survol reste
 # précis à l'échelle d'une commune sans multiplier déraisonnablement le poids
 # de la branche de données.
@@ -125,6 +125,8 @@ class LayerSpec:
     transparent_below: float | None = None
     opacity: int = 244
     discrete: bool = False
+    source_key: str | None = None
+    range_mode: str | None = None
 
 
 PRECIPITATION_STOPS = (
@@ -295,7 +297,7 @@ LAYER_SPECS = (
     ),
     LayerSpec(
         "pluie_cumul",
-        "Précipitations totales",
+        "Précipitations cumulées sur une période",
         "mm",
         "precipitation_total_mm",
         PRECIPITATION_STOPS,
@@ -304,6 +306,7 @@ LAYER_SPECS = (
         transparent_below=0.03,
         opacity=255,
         discrete=True,
+        range_mode="difference",
     ),
     LayerSpec(
         "neige",
@@ -391,6 +394,25 @@ LAYER_SPECS = (
         group="Vent",
     ),
     LayerSpec(
+        "rafales_max",
+        "Rafales maximales sur une période",
+        "km/h",
+        "wind_gust_kmh",
+        (
+            (0, "#edf7e8"),
+            (20, "#a9d77d"),
+            (40, "#f0cf46"),
+            (60, "#ef8b2c"),
+            (80, "#db3d3d"),
+            (100, "#9e235d"),
+            (130, "#4d1647"),
+            (160, "#25152e"),
+        ),
+        group="Vent",
+        source_key="rafales",
+        range_mode="maximum",
+    ),
+    LayerSpec(
         "vent_850",
         "Vent à 850 hPa",
         "km/h",
@@ -441,7 +463,7 @@ LAYER_SPECS = (
             (1030, "#e57a34"),
             (1045, "#b52f43"),
         ),
-        group="Pression et géopotentiel",
+        group="Pression, instabilité et relief",
     ),
     LayerSpec(
         "pression_surface",
@@ -453,7 +475,7 @@ LAYER_SPECS = (
             (950, "#54bf7c"), (1000, "#d6d64c"), (1030, "#ed9a36"),
             (1060, "#b52f43"),
         ),
-        group="Pression et géopotentiel",
+        group="Pression, instabilité et relief",
     ),
     LayerSpec(
         "geopotentiel_500",
@@ -465,7 +487,7 @@ LAYER_SPECS = (
             (5400, "#3cb9aa"), (5600, "#b5d04d"), (5800, "#efad3b"),
             (6000, "#cf493e"),
         ),
-        group="Pression et géopotentiel",
+        group="Pression, instabilité et relief",
     ),
     LayerSpec(
         "geopotentiel_850",
@@ -477,7 +499,7 @@ LAYER_SPECS = (
             (1500, "#3cb9aa"), (1700, "#b5d04d"), (1900, "#efad3b"),
             (2100, "#cf493e"),
         ),
-        group="Pression et géopotentiel",
+        group="Pression, instabilité et relief",
     ),
     LayerSpec(
         "nebulosite",
@@ -693,7 +715,7 @@ LAYER_SPECS = (
             (1800, "#ffc62d"), (2500, "#ff7a22"), (3500, "#e83028"),
             (5000, "#8c1d74"),
         ),
-        group="Instabilité",
+        group="Pression, instabilité et relief",
         transparent_below=25.0,
     ),
     LayerSpec(
@@ -708,12 +730,12 @@ LAYER_SPECS = (
             (45, "#ff6500"), (50, "#f32020"), (55, "#d00076"),
             (60, "#9300c6"), (70, "#ffffff"),
         ),
-        group="Instabilité",
+        group="Pression, instabilité et relief",
         transparent_below=5.0,
     ),
     LayerSpec(
         "altitude",
-        "Altitude du relief CEP",
+        "Altitude du relief",
         "m",
         "altitude_m",
         (
@@ -722,7 +744,7 @@ LAYER_SPECS = (
             (1500, "#966b52"), (2200, "#765054"), (3200, "#eeeeee"),
             (4500, "#ffffff"),
         ),
-        group="Relief",
+        group="Pression, instabilité et relief",
     ),
 )
 
@@ -938,7 +960,12 @@ class CEPMapRenderer:
             ::PROBE_DOWNSAMPLE,
             ::PROBE_DOWNSAMPLE,
         ]
-        minimum = float(spec.stops[0][0])
+        minimum = (
+            0.0
+            if spec.transparent_below is not None
+            and spec.transparent_below >= 0
+            else float(spec.stops[0][0])
+        )
         maximum = float(spec.stops[-1][0])
         if not maximum > minimum:
             raise ValueError(f"Échelle cartographique invalide : {spec.key}")
@@ -1504,6 +1531,8 @@ class CEPMapRenderer:
                     vector_path
                 )
         for spec in LAYER_SPECS:
+            if spec.source_key is not None:
+                continue
             values = fields.get(spec.field)
             if values is None or not np.any(np.isfinite(values)):
                 continue
@@ -1535,6 +1564,15 @@ class CEPMapRenderer:
                 )
             self.available_layers.add(spec.key)
 
+        for spec in LAYER_SPECS:
+            if spec.source_key is None or spec.source_key not in files:
+                continue
+            files[spec.key] = files[spec.source_key]
+            probes[spec.key] = probes[spec.source_key]
+            if spec.source_key in vectors:
+                vectors[spec.key] = vectors[spec.source_key]
+            self.available_layers.add(spec.key)
+
         self.steps.append(
             {
                 "lead_hour": int(lead_hour),
@@ -1560,6 +1598,9 @@ class CEPMapRenderer:
                 "decimals": spec.decimals,
                 "transparent_below": spec.transparent_below,
                 "discrete": spec.discrete,
+                "opacity": spec.opacity,
+                "source_key": spec.source_key,
+                "range_mode": spec.range_mode,
                 "stops": [
                     {"value": value, "color": colour}
                     for value, colour in spec.stops

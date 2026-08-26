@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from datetime import datetime, timezone
 
 import numpy as np
 
@@ -132,6 +133,50 @@ class CEPGridTests(unittest.TestCase):
         self.assertIn('data-cepm-labels="', overlay)
         self.assertIn('data-cepm-role="wind-arrows"', overlay)
         self.assertIn('data-cepm-points="', overlay)
+
+    def test_period_layers_reuse_numeric_maps_without_duplication(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output_directory = Path(directory) / "maps"
+            renderer = CEPMapRenderer(
+                np.empty(0),
+                np.empty(0),
+                output_directory,
+                width=64,
+                height=48,
+                pregridded=True,
+            )
+            shape = (48, 64)
+            renderer.render_step(
+                lead_hour=3,
+                valid_time=datetime(2026, 8, 26, 3, tzinfo=timezone.utc),
+                fields={
+                    "precipitation_total_mm": np.full(shape, 7.5),
+                    "wind_gust_kmh": np.full(shape, 62.0),
+                    "wind_speed_kmh": np.full(shape, 25.0),
+                    "wind_u_kmh": np.full(shape, 24.0),
+                    "wind_v_kmh": np.full(shape, 7.0),
+                    "pressure_hpa": np.tile(
+                        np.linspace(1004.0, 1020.0, 64), (48, 1)
+                    ),
+                },
+            )
+            manifest = renderer.write_manifest(
+                generated_at="2026-08-26T03:30:00Z",
+                run_time="2026-08-26T00:00:00Z",
+            )
+
+        step = manifest["steps"][0]
+        self.assertEqual(step["files"]["rafales_max"], step["files"]["rafales"])
+        self.assertEqual(step["probes"]["rafales_max"], step["probes"]["rafales"])
+        self.assertEqual(
+            manifest["layers"]["pluie_cumul"]["range_mode"], "difference"
+        )
+        self.assertEqual(
+            manifest["layers"]["rafales_max"]["range_mode"], "maximum"
+        )
+        self.assertEqual(
+            manifest["layers"]["rafales_max"]["source_key"], "rafales"
+        )
 
 
 if __name__ == "__main__":
