@@ -19,6 +19,7 @@ from update_cep_france import (  # noqa: E402
     forecast_steps,
     grid_index,
     message_field,
+    storm_diagnostics,
     transform_step,
 )
 from cep_maps import CEPMapRenderer  # noqa: E402
@@ -66,6 +67,40 @@ class CEPGridTests(unittest.TestCase):
         np.testing.assert_allclose(result["wind_speed_kmh"], [18.0, 18.0])
         np.testing.assert_allclose(result["pressure_hpa"], [1020.0, 1015.0])
         self.assertTrue(np.all(np.isfinite(result["humidity_pct"])))
+
+    def test_dry_mucape_does_not_create_a_false_thunderstorm_risk(self) -> None:
+        diagnostics = storm_diagnostics(
+            cape=np.array([1374.0]),
+            precipitation=np.array([0.0]),
+            precipitation_rate=np.array([0.0]),
+            humidity=np.array([75.0]),
+            reflectivity=np.array([np.nan]),
+            graupel=np.array([0.0]),
+            gust_speed=np.array([0.0]),
+            step_hours=3.0,
+        )
+        thunder, lightning, hail, convective_rain, storm_type = diagnostics
+        self.assertEqual(int(thunder[0]), 0)
+        self.assertEqual(float(lightning[0]), 0.0)
+        self.assertEqual(int(hail[0]), 0)
+        self.assertEqual(float(convective_rain[0]), 0.0)
+        self.assertEqual(int(storm_type[0]), 0)
+
+    def test_active_precipitation_and_mucape_raise_the_risk_progressively(self) -> None:
+        thunder, lightning, _hail, _convective_rain, _storm_type = (
+            storm_diagnostics(
+                cape=np.array([150.0, 650.0, 1400.0, 2400.0]),
+                precipitation=np.array([0.6, 3.0, 10.0, 30.0]),
+                precipitation_rate=np.array([0.2, 1.2, 4.0, 10.0]),
+                humidity=np.array([60.0, 65.0, 70.0, 75.0]),
+                reflectivity=np.full(4, np.nan),
+                graupel=np.zeros(4),
+                gust_speed=np.array([20.0, 35.0, 65.0, 105.0]),
+                step_hours=3.0,
+            )
+        )
+        np.testing.assert_array_equal(thunder, [1, 2, 3, 4])
+        self.assertTrue(np.all(np.diff(lightning) > 0))
 
     def test_only_surface_geopotential_is_used_as_altitude(self) -> None:
         metadata = {

@@ -24,7 +24,7 @@ from scipy.spatial import cKDTree
 
 
 MAP_SCHEMA_VERSION = 10
-MODULE_VERSION = "1.5.0"
+MODULE_VERSION = "1.5.1"
 # Une valeur numérique tous les deux pixels cartographiques : le survol reste
 # précis à l'échelle d'une commune sans multiplier déraisonnablement le poids
 # de la branche de données.

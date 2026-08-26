@@ -37,13 +37,13 @@ from cep_maps import DEFAULT_BOUNDS, CEPMapRenderer
 
 
 LOGGER = logging.getLogger("cep.france")
-PIPELINE_VERSION = "1.5.0"
+PIPELINE_VERSION = "1.5.1"
 DATASET_PAGE = "https://www.ecmwf.int/en/forecasts/datasets/open-data"
 DEFAULT_CURRENT_METADATA_URL = (
     "https://raw.githubusercontent.com/alertesmeteo-hub/"
     "cep/data/index.json"
 )
-USER_AGENT = "alertes-meteo.com/cep-ecmwf-france/1.5.0"
+USER_AGENT = "alertes-meteo.com/cep-ecmwf-france/1.5.1"
 
 # Grille mondiale régulière IFS Open Data 0,25°.
 CEP_NI = 1440
@@ -75,6 +75,7 @@ VALUE_COLUMNS = (
     "cloud_mid_pct",
     "cloud_high_pct",
     "cape_jkg",
+    "precipitation_rate_mmh",
     "reflectivity_dbz",
     "graupel_mm",
     "thunder_risk_code",
@@ -405,6 +406,7 @@ def message_field(gid: int) -> str | None:
         "mcc": "cloud_mid_pct",
         "hcc": "cloud_high_pct",
         "tp": "precipitation_total_m",
+        "tprate": "precipitation_rate_kgm2s",
         "sf": "snow_total_m",
         "sd": "snow_depth_m",
         "vis": "visibility_m",
@@ -612,6 +614,110 @@ def rounded(values: np.ndarray, decimals: int) -> np.ndarray:
     return np.round(values, decimals)
 
 
+def storm_diagnostics(
+    cape: np.ndarray,
+    precipitation: np.ndarray,
+    precipitation_rate: np.ndarray,
+    humidity: np.ndarray,
+    reflectivity: np.ndarray,
+    graupel: np.ndarray,
+    gust_speed: np.ndarray,
+    step_hours: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Diagnostic convectif indicatif à partir des champs IFS disponibles.
+
+    La MUCAPE décrit un potentiel d'instabilité, pas la présence d'un orage.
+    Un niveau de risque positif exige donc aussi un signal convectif actif :
+    précipitations, taux de précipitation, réflectivité ou graupel.
+    """
+    cape_value = np.nan_to_num(cape, nan=0.0, posinf=0.0, neginf=0.0)
+    rain_value = np.nan_to_num(
+        precipitation, nan=0.0, posinf=0.0, neginf=0.0
+    )
+    direct_rate = np.nan_to_num(
+        precipitation_rate, nan=0.0, posinf=0.0, neginf=0.0
+    )
+    effective_rate = np.maximum(
+        direct_rate,
+        rain_value / max(float(step_hours), 1.0),
+    )
+    humidity_value = np.nan_to_num(humidity, nan=0.0)
+    reflectivity_value = np.nan_to_num(reflectivity, nan=0.0)
+    graupel_value = np.nan_to_num(graupel, nan=0.0)
+    gust_value = np.nan_to_num(gust_speed, nan=0.0)
+
+    moist = (
+        (humidity_value >= 45.0)
+        | (effective_rate >= 0.5)
+        | (reflectivity_value >= 35.0)
+        | (graupel_value >= 0.1)
+    )
+    active = (
+        (effective_rate >= 0.10)
+        | (reflectivity_value >= 30.0)
+        | (graupel_value >= 0.05)
+    )
+    weak = moist & active & (cape_value >= 100.0)
+    moderate = moist & (cape_value >= 500.0) & (
+        (effective_rate >= 0.8)
+        | (reflectivity_value >= 40.0)
+        | (graupel_value >= 0.2)
+    )
+    strong = moist & (cape_value >= 1000.0) & (
+        (effective_rate >= 2.5)
+        | (reflectivity_value >= 48.0)
+        | (graupel_value >= 0.8)
+    )
+    severe = moist & (cape_value >= 1800.0) & (
+        (effective_rate >= 7.0)
+        | (reflectivity_value >= 56.0)
+        | (graupel_value >= 2.0)
+    )
+    severe |= strong & (cape_value >= 1500.0) & (gust_value >= 100.0)
+
+    thunder = np.zeros(cape.shape, dtype=np.int16)
+    thunder[weak] = 1
+    thunder[moderate] = 2
+    thunder[strong] = 3
+    thunder[severe] = 4
+
+    lightning_raw = np.clip(
+        cape_value / 45.0
+        + effective_rate * 6.0
+        + np.maximum(reflectivity_value - 25.0, 0.0) * 1.8
+        + graupel_value * 8.0,
+        0.0,
+        100.0,
+    )
+    lightning = np.where(weak, lightning_raw, 0.0)
+    lightning = np.where(thunder >= 2, np.maximum(lightning, 25.0), lightning)
+    lightning = np.where(thunder >= 3, np.maximum(lightning, 50.0), lightning)
+    lightning = np.where(thunder >= 4, np.maximum(lightning, 75.0), lightning)
+
+    hail = np.zeros(cape.shape, dtype=np.int16)
+    hail[(thunder >= 2) & (cape_value >= 700.0) & (
+        (reflectivity_value >= 44.0) | (graupel_value >= 0.2)
+    )] = 1
+    hail[(thunder >= 3) & (cape_value >= 1400.0) & (
+        (reflectivity_value >= 50.0) | (graupel_value >= 0.8)
+    )] = 2
+    hail[(thunder >= 4) & (
+        (reflectivity_value >= 56.0) | (graupel_value >= 2.0)
+    )] = 3
+
+    cape_fraction = np.clip((cape_value - 100.0) / 1400.0, 0.0, 1.0)
+    rate_fraction = np.clip((effective_rate - 0.1) / 4.0, 0.0, 1.0)
+    convective_fraction = np.where(
+        weak,
+        np.clip(0.15 + 0.55 * cape_fraction + 0.30 * rate_fraction, 0.0, 1.0),
+        0.0,
+    )
+    convective_precipitation = rain_value * convective_fraction
+
+    storm_type = thunder.copy()
+    return thunder, lightning, hail, convective_precipitation, storm_type
+
+
 def transform_step(
     raw: dict[str, np.ndarray],
     altitude: np.ndarray,
@@ -629,6 +735,10 @@ def transform_step(
     gust_scalar = array_like(raw, "gust_speed_ms", shape)
     surface_pressure = array_like(raw, "surface_pressure_pa", shape) / 100.0
     cape = np.maximum(array_like(raw, "cape_jkg", shape), 0.0)
+    precipitation_rate = np.maximum(
+        array_like(raw, "precipitation_rate_kgm2s", shape) * 3600.0,
+        0.0,
+    )
     reflectivity = np.clip(array_like(raw, "reflectivity_dbz", shape), 0, 80)
     cloud_total = np.clip(array_like(raw, "cloud_total_fraction", shape), 0, 100)
     cloud_low = np.clip(array_like(raw, "cloud_low_pct", shape), 0, 100)
@@ -714,35 +824,19 @@ def transform_step(
     condition[np.isfinite(precipitation) & (precipitation >= 5)] = 6
     condition[np.isfinite(snow) & (snow >= 0.1)] = 7
 
-    thunder = np.zeros(shape, dtype=np.int16)
-    thunder[(cape >= 100) | (reflectivity >= 30)] = 1
-    thunder[(cape >= 500) | (reflectivity >= 40)] = 2
-    thunder[(cape >= 1200) | (reflectivity >= 50)] = 3
-    thunder[(cape >= 2200) & (reflectivity >= 52)] = 4
-    thunder[(reflectivity >= 58) | ((cape >= 1800) & (gust_speed >= 90))] = 4
-    thunder[~np.isfinite(cape) & ~np.isfinite(reflectivity)] = 0
-
-    lightning = np.clip(
-        np.nan_to_num(cape, nan=0.0) / 30.0
-        + np.maximum(np.nan_to_num(reflectivity, nan=0.0) - 25.0, 0) * 1.8,
-        0,
-        100,
+    step_hours = 3.0 if lead_hour <= 144 else 6.0
+    thunder, lightning, hail, convective_precipitation, storm_type = (
+        storm_diagnostics(
+            cape,
+            precipitation,
+            precipitation_rate,
+            humidity,
+            reflectivity,
+            graupel,
+            gust_speed,
+            step_hours,
+        )
     )
-    hail = np.zeros(shape, dtype=np.int16)
-    hail[(cape >= 500) & (reflectivity >= 42)] = 1
-    hail[(cape >= 1200) & (reflectivity >= 50)] = 2
-    hail[((cape >= 2200) & (reflectivity >= 55)) | (graupel >= 2)] = 3
-    convective_fraction = np.clip(
-        np.nan_to_num(cape, nan=0.0) / 1200.0, 0, 1
-    ) * np.clip(
-        (np.nan_to_num(reflectivity, nan=0.0) - 20.0) / 25.0, 0, 1
-    )
-    convective_precipitation = precipitation * convective_fraction
-    storm_type = np.zeros(shape, dtype=np.int16)
-    storm_type[thunder == 1] = 1
-    storm_type[thunder == 2] = 2
-    storm_type[(thunder >= 3) & (reflectivity >= 50)] = 3
-    storm_type[(thunder >= 4) & (cape >= 2000)] = 4
 
     snow_ratio = np.select(
         [temperature <= -10, temperature <= -5, temperature <= 0, temperature <= 1.5],
@@ -785,6 +879,7 @@ def transform_step(
         "cloud_low_pct": rounded(cloud_low, 0),
         "cloud_mid_pct": rounded(cloud_mid, 0),
         "cloud_high_pct": rounded(cloud_high, 0),
+        "precipitation_rate_mmh": rounded(precipitation_rate, 2),
         "wind_speed_kmh": rounded(wind_speed, 0),
         "wind_direction_deg": rounded(wind_direction, 0),
         "wind_gust_kmh": rounded(gust_speed, 0),
@@ -902,7 +997,7 @@ def write_departments(
         destination = destination_directory / f"{code}.json"
         with destination.open("w", encoding="utf-8") as output:
             output.write("{")
-            output.write('"schema_version":3,"status":"ok","generated_at":')
+            output.write('"schema_version":4,"status":"ok","generated_at":')
             json.dump(generated_at, output)
             output.write(',"department":')
             json.dump(code, output)
@@ -957,7 +1052,7 @@ def write_departments(
 
 IFS_PARAMETERS = [
     "2t", "2d", "10u", "10v", "10fg", "msl", "sp", "tcc",
-    "tp", "sf", "sd", "mucape", "z",
+    "tp", "tprate", "sf", "sd", "mucape", "z",
 ]
 
 
@@ -1136,7 +1231,7 @@ def build_product(
         "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
     }
     index = {
-        "schema_version": 3,
+        "schema_version": 4,
         "status": "ok",
         "generated_at": generated_at,
         "model": model,
@@ -1149,6 +1244,7 @@ def build_product(
         "diagnostics": {
             "direct": [
                 "MUCAPE",
+                "taux de précipitation instantané",
                 "pluie cumulée",
                 "neige cumulée",
                 "pression de surface",

@@ -71,7 +71,7 @@ class Element {
 const expectWebgl = process.env.CEPM_DISABLE_WEBGL !== '1';
 const counters = {
     draws: 0, textures: 0, fallbackImages: 0, strokes: 0, labels: 0,
-    periodRenders: 0
+    periodRenders: 0, clipboardWrites: 0, captureHeight: 0
 };
 
 function make2dContext() {
@@ -134,6 +134,10 @@ class Canvas extends Element {
         if (type === '2d') return this.context2d;
         return null;
     }
+    toBlob(callback) {
+        counters.captureHeight = this.height;
+        callback(new Blob(['png'], { type: 'image/png' }));
+    }
 }
 
 const elements = {};
@@ -144,10 +148,12 @@ const selectors = [
     'legend', 'zoom-in', 'zoom-out', 'reset', 'fullscreen', 'zoom-level',
     'probe', 'probe-value', 'probe-label', 'single-timeline', 'period',
     'dual-range', 'period-start', 'period-end', 'period-title',
-    'period-summary', 'period-start-label', 'period-end-label'
+    'period-summary', 'period-start-label', 'period-end-label', 'copy', 'capture',
+    'advanced-tools'
 ];
 for (const name of selectors) elements[name] = new Element(name.includes('zoom') || ['previous', 'play', 'next', 'reset', 'fullscreen', 'menu-toggle', 'menu-close'].includes(name) ? 'button' : 'div');
 elements['layer-menu'].hidden = true;
+elements['menu-close'].hidden = true;
 elements.error.hidden = true;
 elements.stale.hidden = true;
 elements.probe.hidden = true;
@@ -336,11 +342,22 @@ const windowMock = {
     },
     cancelAnimationFrame() {},
     setTimeout, clearTimeout, setInterval, clearInterval,
-    addEventListener(type, callback) { (windowListeners[type] ||= []).push(callback); }
+    addEventListener(type, callback) { (windowListeners[type] ||= []).push(callback); },
+    ClipboardItem: class ClipboardItem { constructor(items) { this.items = items; } }
+};
+
+const navigatorMock = {
+    clipboard: {
+        async write(items) {
+            assert.equal(items.length, 1);
+            counters.clipboardWrites += 1;
+        }
+    }
 };
 
 const context = {
-    window: windowMock, document: documentMock, fetch: fetchMock, Image: ImageMock,
+    window: windowMock, document: documentMock, navigator: navigatorMock,
+    fetch: fetchMock, Image: ImageMock,
     Path2D: Path2DMock, DOMParser: DOMParserMock, Intl, Date, Math, Map, Set,
     Array, Number, String, Boolean, Promise, Error, DataView, ArrayBuffer,
     Uint8Array, Uint8ClampedArray, Blob, Response, console, setTimeout,
@@ -363,6 +380,20 @@ vm.runInNewContext(fs.readFileSync(scriptPath, 'utf8'), context, { filename: scr
     }
     assert.ok(counters.strokes >= 6, 'Les frontières et vecteurs météo n’ont pas été dessinés');
     assert.ok(counters.labels >= 1, 'Les noms de communes n’ont pas été dessinés');
+
+    elements.copy.click();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(counters.clipboardWrites, 1, 'La capture complète n’a pas été copiée');
+    assert.ok(
+        counters.captureHeight > elements.viewport.clientHeight,
+        'La capture ne contient pas les bandeaux d’informations et la légende'
+    );
+
+    assert.equal(elements['menu-close'].hidden, false);
+    elements['menu-close'].click();
+    assert.equal(elements['menu-close'].hidden, true);
+    elements['menu-toggle'].click();
+    assert.equal(elements['menu-close'].hidden, false);
 
     elements.viewport.dispatch('pointermove', {
         pointerId: 0, pointerType: 'mouse', clientX: 500, clientY: 370
