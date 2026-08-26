@@ -853,7 +853,7 @@
             diagramBody.appendChild(svg);
             var caption = document.createElement('p');
             caption.className = 'cepm-diagram-caption';
-            caption.textContent = 'Température (ligne) et précipitations horaires (barres) — prochaines échéances CEP.';
+            caption.textContent = 'Température (ligne) et précipitations par pas (barres) — prochaines échéances CEP.';
             diagramBody.appendChild(caption);
         }
 
@@ -1335,7 +1335,7 @@
                     throw new Error('surcouche vectorielle invalide');
                 }
                 var paths = Array.from(svg.querySelectorAll('path')).map(
-                    function (node, index) {
+                    function (node) {
                         return {
                             path: new Path2D(node.getAttribute('d') || ''),
                             colour: node.getAttribute('stroke') || '#101116',
@@ -1343,7 +1343,8 @@
                             width: Number(node.getAttribute('stroke-width') || 1),
                             lineCap: node.getAttribute('stroke-linecap') || 'butt',
                             lineJoin: node.getAttribute('stroke-linejoin') || 'miter',
-                            department: index === 0
+                            hideAtDeepZoom:
+                                node.getAttribute('data-cepm-hide-deep') === '1'
                         };
                     }
                 );
@@ -1407,7 +1408,7 @@
                     pixelRatio * offsetY
                 );
                 definition.paths.forEach(function (entry) {
-                    if (entry.department && transform.scale > 3.2) {
+                    if (entry.hideAtDeepZoom && transform.scale > 3.2) {
                         return;
                     }
                     vectorContext.strokeStyle = entry.colour;
@@ -1684,7 +1685,7 @@
             var southY = mercator(Number(bounds.south));
             var u = (longitude - west) / (east - west);
             var v = (northY - mercator(latitude)) / (northY - southY);
-            var scale = clamp(Number(pendingFocus.scale) || 32, 1, maxScale);
+            var scale = clamp(Number(pendingFocus.scale) || 6, 1, maxScale);
             transform.scale = scale;
             transform.x = width * scale * (0.5 - u);
             transform.y = height * scale * (0.5 - v);

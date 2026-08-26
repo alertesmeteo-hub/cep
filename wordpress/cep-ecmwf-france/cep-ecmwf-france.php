@@ -3,7 +3,7 @@
  * Plugin Name: CEP / ECMWF France — Tableaux et cartes
  * Plugin URI: https://github.com/alertesmeteo-hub/cep
  * Description: Cartes interactives et prévisions du modèle déterministe CEP/ECMWF IFS pour la France métropolitaine et la Corse.
- * Version: 1.1.0
+ * Version: 1.3.0
  * Author: Alertes Météo Hub
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -14,8 +14,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('CEP_VERSION', '1.1.0');
-define('CEP_RELEASE_DATE', '25/08/2026');
+define('CEP_VERSION', '1.3.0');
+define('CEP_RELEASE_DATE', '26/08/2026');
 define('CEP_OPTION_BASE_URL', 'cep_national_data_base_url');
 define(
     'CEP_DEFAULT_BASE_URL',
@@ -239,7 +239,7 @@ function cep_render_map_shortcode($atts) {
     >
         <header class="cep-header cepm-header">
             <div>
-                <p class="cep-kicker">MODÈLE HAUTE RÉSOLUTION • ÉCHÉANCES HORAIRES</p>
+                <p class="cep-kicker">MODÈLE DÉTERMINISTE • JUSQU’À +240 H</p>
                 <h2><?php echo esc_html($title); ?></h2>
                 <p class="cep-meta" data-cepm-run>Chargement du dernier run CEP…</p>
             </div>
@@ -429,7 +429,7 @@ function cep_render_shortcode($atts) {
     >
         <header class="cep-header">
             <div>
-                <p class="cep-kicker">MODÈLE HAUTE RÉSOLUTION • FRANCE MÉTROPOLITAINE</p>
+                <p class="cep-kicker">MODÈLE DÉTERMINISTE • FRANCE MÉTROPOLITAINE</p>
                 <h2 data-cep-title><?php echo esc_html($title_prefix . ' — ' . $city_name); ?></h2>
                 <p class="cep-city-altitude" data-cep-altitude>Altitude de <?php echo esc_html($city_name); ?> : chargement…</p>
                 <p class="cep-meta" data-cep-meta>Chargement du dernier run CEP…</p>
@@ -526,7 +526,7 @@ function cep_render_shortcode($atts) {
         </div>
 
         <div class="cep-panel" data-cep-panel="general" hidden>
-            <div class="cep-table-wrap cep-general-wrap" role="region" aria-label="Prévisions horaires générales" tabindex="0">
+            <div class="cep-table-wrap cep-general-wrap" role="region" aria-label="Prévisions générales par échéance" tabindex="0">
                 <table class="cep-table">
                     <thead>
                         <tr>
@@ -576,7 +576,7 @@ function cep_render_shortcode($atts) {
                 Diagnostic convectif CEP/IFS : chargement…
             </p>
             <div class="cep-top-scroll" data-cep-top-scroll="storms" aria-label="Navigation horizontale du tableau orages" hidden><div></div></div>
-            <div class="cep-table-wrap cep-storm-wrap" data-cep-scroll-wrap="storms" role="region" aria-label="Prévisions horaires d'orages" tabindex="0">
+            <div class="cep-table-wrap cep-storm-wrap" data-cep-scroll-wrap="storms" role="region" aria-label="Prévisions d'orages par échéance" tabindex="0">
                 <table class="cep-table cep-storm-table">
                     <thead>
                         <tr>
@@ -589,7 +589,7 @@ function cep_render_shortcode($atts) {
                             <th scope="col">Grêle</th>
                             <th scope="col">Pluie conv.</th>
                             <th scope="col">Graupel</th>
-                            <th scope="col">Pluie 1 h</th>
+                            <th scope="col">Pluie / pas</th>
                             <th scope="col">Rafales</th>
                             <th scope="col">Type</th>
                             <th scope="col">Détails</th>
@@ -612,7 +612,7 @@ function cep_render_shortcode($atts) {
                 Diagnostic neige CEP/IFS : chargement…
             </p>
             <div class="cep-top-scroll" data-cep-top-scroll="snow" aria-label="Navigation horizontale du tableau neige" hidden><div></div></div>
-            <div class="cep-table-wrap cep-snow-wrap" data-cep-scroll-wrap="snow" role="region" aria-label="Risque horaire de neige" tabindex="0">
+            <div class="cep-table-wrap cep-snow-wrap" data-cep-scroll-wrap="snow" role="region" aria-label="Risque de neige par échéance" tabindex="0">
                 <table class="cep-table cep-snow-table">
                     <thead>
                         <tr>
@@ -620,7 +620,7 @@ function cep_render_shortcode($atts) {
                             <th scope="col">Heure</th>
                             <th scope="col">Risque neige</th>
                             <th scope="col">Phase</th>
-                            <th scope="col">Neige 1 h</th>
+                            <th scope="col">Neige / pas</th>
                             <th scope="col">Neige 3 h</th>
                             <th scope="col">Neige 6 h</th>
                             <th scope="col">Tenue</th>

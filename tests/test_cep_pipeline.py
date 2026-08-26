@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -12,10 +14,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from update_cep_france import (  # noqa: E402
     CEP_NI,
+    MapSampler,
     forecast_steps,
     grid_index,
+    message_field,
     transform_step,
 )
+from cep_maps import CEPMapRenderer  # noqa: E402
 
 
 class CEPGridTests(unittest.TestCase):
@@ -37,6 +42,11 @@ class CEPGridTests(unittest.TestCase):
         self.assertEqual(steps[48], 144)
         self.assertEqual(steps[49], 150)
 
+    def test_map_sampling_covers_the_complete_domain(self) -> None:
+        sampler = MapSampler(601, 180)
+        self.assertTrue(np.all(sampler.coverage))
+        self.assertLess(np.min(np.abs(sampler.column_grid - CEP_NI / 2)), 0.01)
+
     def test_surface_fields_are_transformed(self) -> None:
         shape = (2,)
         raw = {
@@ -55,6 +65,45 @@ class CEPGridTests(unittest.TestCase):
         np.testing.assert_allclose(result["wind_speed_kmh"], [18.0, 18.0])
         np.testing.assert_allclose(result["pressure_hpa"], [1020.0, 1015.0])
         self.assertTrue(np.all(np.isfinite(result["humidity_pct"])))
+
+    def test_only_surface_geopotential_is_used_as_altitude(self) -> None:
+        metadata = {
+            1: {"shortName": "z", "typeOfLevel": "surface"},
+            2: {"shortName": "z", "typeOfLevel": "isobaricInhPa"},
+        }
+
+        def fake_get(gid: int, key: str, default=None):
+            return metadata.get(gid, {}).get(key, default)
+
+        with patch("update_cep_france.safe_get", side_effect=fake_get):
+            self.assertEqual(message_field(1), "surface_geopotential")
+            self.assertIsNone(message_field(2))
+
+    def test_precise_department_boundaries_are_rendered(self) -> None:
+        boundary_path = (
+            ROOT
+            / "config"
+            / "france"
+            / "departements-version-simplifiee.geojson"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output_directory = Path(directory) / "maps"
+            CEPMapRenderer(
+                np.empty(0),
+                np.empty(0),
+                output_directory,
+                width=320,
+                height=240,
+                department_boundary_path=boundary_path,
+                pregridded=True,
+            )
+            overlay = (output_directory / "frontieres.svg").read_text(
+                encoding="utf-8",
+            )
+
+        self.assertIn('data-cepm-quality="precise"', overlay)
+        self.assertIn('data-cepm-hide-deep="0"', overlay)
+        self.assertGreater(overlay.count("M"), 100)
 
 
 if __name__ == "__main__":

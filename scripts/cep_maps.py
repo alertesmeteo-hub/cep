@@ -23,8 +23,8 @@ from PIL import Image
 from scipy.spatial import cKDTree
 
 
-MAP_SCHEMA_VERSION = 6
-MODULE_VERSION = "1.1.0"
+MAP_SCHEMA_VERSION = 8
+MODULE_VERSION = "1.3.0"
 # Une valeur numérique tous les deux pixels cartographiques : le survol reste
 # précis à l'échelle d'une commune sans multiplier déraisonnablement le poids
 # de la branche de données.
@@ -283,7 +283,7 @@ LAYER_SPECS = (
     ),
     LayerSpec(
         "pluie_1h",
-        "Précipitations sur 1 h",
+        "Précipitations depuis l’échéance précédente",
         "mm",
         "precipitation_mm",
         tuple(stop for stop in PRECIPITATION_STOPS if stop[0] <= 100),
@@ -307,7 +307,7 @@ LAYER_SPECS = (
     ),
     LayerSpec(
         "neige",
-        "Neige sur 1 h (équivalent eau)",
+        "Neige depuis l’échéance précédente (équivalent eau)",
         "mm",
         "snow_mm",
         tuple(stop for stop in PRECIPITATION_STOPS if stop[0] <= 100),
@@ -760,6 +760,7 @@ class CEPMapRenderer:
         france_longitudes: np.ndarray | None = None,
         france_departments: Sequence[str] | None = None,
         boundary_directory: Path | None = None,
+        department_boundary_path: Path | None = None,
         pregridded: bool = False,
     ) -> None:
         self.latitudes = np.asarray(latitudes, dtype=np.float64)
@@ -778,6 +779,11 @@ class CEPMapRenderer:
         self.source_max_distance = float(source_max_distance)
         self.boundary_directory = (
             Path(boundary_directory) if boundary_directory is not None else None
+        )
+        self.department_boundary_path = (
+            Path(department_boundary_path)
+            if department_boundary_path is not None
+            else None
         )
         self.france_latitudes = (
             np.asarray(france_latitudes, dtype=np.float64)
@@ -879,10 +885,9 @@ class CEPMapRenderer:
             stop_values[0],
             stop_values[-1],
         )
-        # Les cartes CEP de référence utilisent des plages colorées nettes,
-        # pas un agrandissement flou des pixels du raster. La quantification se
-        # fait après l'interpolation pleine résolution ; les frontières des
-        # plages restent donc lisses même lors d'un zoom important.
+        # Le champ a déjà été interpolé par spline bicubique sur toute la carte.
+        # Cette quantification produit ensuite de vraies plages d'isovaleurs
+        # remplies : couleur constante dans chaque zone et contours fluides.
         contour_step = CONTOUR_STEPS.get(spec.field)
         if contour_step:
             clipped = np.floor(clipped / contour_step) * contour_step
@@ -1133,6 +1138,83 @@ class CEPMapRenderer:
                 )
         return " ".join(paths)
 
+    def _geojson_svg_path(self, path: Path) -> str:
+        """Projette les anneaux Polygon/MultiPolygon d'un fichier GeoJSON."""
+
+        if not path.is_file():
+            return ""
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return ""
+
+        features = payload.get("features")
+        if payload.get("type") != "FeatureCollection" or not isinstance(
+            features,
+            list,
+        ):
+            return ""
+
+        south = float(self.bounds["south"]) - 1.0
+        north = float(self.bounds["north"]) + 1.0
+        west = float(self.bounds["west"]) - 1.0
+        east = float(self.bounds["east"]) + 1.0
+        paths: list[str] = []
+
+        for feature in features:
+            geometry = feature.get("geometry") if isinstance(feature, dict) else None
+            if not isinstance(geometry, dict):
+                continue
+            geometry_type = geometry.get("type")
+            coordinates = geometry.get("coordinates")
+            if geometry_type == "Polygon":
+                polygons = [coordinates]
+            elif geometry_type == "MultiPolygon":
+                polygons = coordinates
+            else:
+                continue
+            if not isinstance(polygons, list):
+                continue
+
+            for polygon in polygons:
+                if not isinstance(polygon, list):
+                    continue
+                for ring in polygon:
+                    if not isinstance(ring, list):
+                        continue
+                    points: list[tuple[float, float]] = []
+                    for coordinate in ring:
+                        if not isinstance(coordinate, list) or len(coordinate) < 2:
+                            continue
+                        try:
+                            longitude = float(coordinate[0])
+                            latitude = float(coordinate[1])
+                        except (TypeError, ValueError):
+                            continue
+                        if math.isfinite(longitude) and math.isfinite(latitude):
+                            points.append((longitude, latitude))
+                    if len(points) < 2:
+                        continue
+                    longitudes = [point[0] for point in points]
+                    latitudes = [point[1] for point in points]
+                    if (
+                        max(longitudes) < west
+                        or min(longitudes) > east
+                        or max(latitudes) < south
+                        or min(latitudes) > north
+                    ):
+                        continue
+                    pixels = [
+                        self._pixel(latitude, longitude)
+                        for longitude, latitude in points
+                    ]
+                    paths.append(
+                        "M"
+                        + " L".join(f"{x:.1f},{y:.1f}" for x, y in pixels)
+                        + " Z"
+                    )
+        return " ".join(paths)
+
     @staticmethod
     def _true_runs(mask: np.ndarray):
         padded = np.concatenate(
@@ -1211,20 +1293,35 @@ class CEPMapRenderer:
             coastline_path = self._shapefile_svg_path(
                 self.boundary_directory / "ne_50m_coastline.shp",
             )
-        department_path = self._department_svg_path()
+        department_path = ""
+        department_quality = "approximate"
+        if self.department_boundary_path is not None:
+            department_path = self._geojson_svg_path(
+                self.department_boundary_path,
+            )
+            if department_path:
+                department_quality = "precise"
+        if not department_path:
+            department_path = self._department_svg_path()
+        hide_deep = "0" if department_quality == "precise" else "1"
         svg = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {self.width} '
             f'{self.height}" preserveAspectRatio="none" '
             'shape-rendering="geometricPrecision">\n'
-            f'<path d="{department_path}" fill="none" stroke="#20242b" '
-            'stroke-opacity="0.58" stroke-width="0.8" '
+            f'<path d="{department_path}" fill="none" stroke="#182732" '
+            'stroke-opacity="0.76" stroke-width="0.95" '
+            'stroke-linejoin="round" stroke-linecap="round" '
+            'data-cepm-layer="departments" '
+            f'data-cepm-quality="{department_quality}" '
+            f'data-cepm-hide-deep="{hide_deep}" '
             'vector-effect="non-scaling-stroke"/>\n'
-            f'<path d="{national_path}" fill="none" stroke="#111116" '
-            'stroke-width="1.45" stroke-linejoin="round" stroke-linecap="round" '
+            f'<path d="{national_path}" fill="none" stroke="#14202a" '
+            'stroke-opacity="0.9" stroke-width="1.55" '
+            'stroke-linejoin="round" stroke-linecap="round" '
             'vector-effect="non-scaling-stroke"/>\n'
-            f'<path d="{coastline_path}" fill="none" stroke="#050507" '
-            'stroke-width="2" stroke-linejoin="round" stroke-linecap="round" '
+            f'<path d="{coastline_path}" fill="none" stroke="#07131c" '
+            'stroke-width="2.15" stroke-linejoin="round" stroke-linecap="round" '
             'vector-effect="non-scaling-stroke"/>\n'
             '</svg>\n'
         )

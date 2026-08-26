@@ -295,7 +295,7 @@ const scriptPath = path.resolve(__dirname, '../wordpress/cep-ecmwf-france/assets
 vm.runInNewContext(fs.readFileSync(scriptPath, 'utf8'), context, { filename: scriptPath });
 
 (async () => {
-    await new Promise(resolve => setTimeout(resolve, 60));
+    await new Promise(resolve => setTimeout(resolve, 120));
     assert.equal(elements.error.hidden, true, elements.error.textContent);
     assert.equal(elements.loading.hidden, true);
     assert.equal(elements['zoom-level'].textContent, '100 %');
@@ -323,6 +323,14 @@ vm.runInNewContext(fs.readFileSync(scriptPath, 'utf8'), context, { filename: scr
     });
     await new Promise(resolve => setTimeout(resolve, 20));
     assert.equal(elements['zoom-level'].textContent, '3200 %');
+    elements.reset.click();
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    app.dispatch('cepm:focus-location', {
+        detail: { latitude: 42.699, longitude: 2.9045 }
+    });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(elements['zoom-level'].textContent, '600 %');
     elements.reset.click();
     await new Promise(resolve => setTimeout(resolve, 20));
 

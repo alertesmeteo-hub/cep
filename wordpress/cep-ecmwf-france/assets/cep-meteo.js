@@ -659,7 +659,7 @@
         var rainMaxValue = rainClean.length ? Math.max.apply(null, rainClean) : 0;
         appendChartMetrics(container, [
             { label: 'Cumul', value: formatNumber(total, 1) + ' mm' },
-            { label: 'Max. horaire', value: formatNumber(rainMaxValue, 1) + ' mm' }
+            { label: 'Max. par pas', value: formatNumber(rainMaxValue, 1) + ' mm' }
         ]);
 
         var width = 1280;
@@ -718,7 +718,7 @@
             var barHeight = innerHeight * (Math.min(value, rainScale.max) - rainScale.min) / Math.max(0.001, rainScale.max - rainScale.min);
             var x = margin.left + index * slot + slot * 0.16;
             var y = margin.top + innerHeight - barHeight;
-            var rainTooltip = labels[index] + ' — pluie horaire : ' + formatNumber(value, 1) + ' mm';
+            var rainTooltip = labels[index] + ' — pluie depuis l’échéance précédente : ' + formatNumber(value, 1) + ' mm';
             var bar = svgElement('rect', {
                 x: x,
                 y: y,
@@ -794,7 +794,7 @@
             x: margin.left + 28,
             y: 21,
             class: 'cep-chart-axis cep-chart-legend-text'
-        }, 'Pluie horaire'));
+        }, 'Pluie par échéance'));
         legend.appendChild(svgElement('line', {
             x1: margin.left + 142,
             x2: margin.left + 172,
@@ -1272,7 +1272,7 @@
                 appendHazard(stormRow, 'Grêle', value(values, 'hail_risk_code'));
                 appendNumber(stormRow, 'Pluie conv.', value(values, 'convective_precipitation_mm'), 1, ' mm');
                 appendNumber(stormRow, 'Graupel', value(values, 'graupel_mm'), 2, ' mm');
-                appendNumber(stormRow, 'Pluie 1 h', rain, 1, ' mm', rainClass(rain));
+                appendNumber(stormRow, 'Pluie / pas', rain, 1, ' mm', rainClass(rain));
                 appendNumber(stormRow, 'Rafales', gustDisplay, 0, ' km/h', gustClass(gustDisplay));
                 var stormTypeCode = value(values, 'storm_type_code');
                 var stormTypeCell = createCell('td', 'Type d’orage', 'cep-storm-type');
@@ -1344,7 +1344,7 @@
                 var phaseCell = createCell('td', 'Phase');
                 phaseCell.textContent = finite(phaseCode) ? (SNOW_PHASE[Number(phaseCode)] || '—') : '—';
                 snowRow.appendChild(phaseCell);
-                appendNumber(snowRow, 'Neige 1 h', value(values, 'snow_fresh_cm'), 1, ' cm');
+                appendNumber(snowRow, 'Neige / pas', value(values, 'snow_fresh_cm'), 1, ' cm');
 
                 function forwardSnowSum(startIndex, windowHours) {
                     var total = 0;
@@ -1471,13 +1471,15 @@
             if (altitudeLine) {
                 altitudeLine.textContent = finite(altitude)
                     ? 'Altitude de ' + cityName + ' : ≈ ' + formatNumber(altitude, 0) + ' m (point de grille CEP)'
-                    : 'Altitude de ' + cityName + ' : — (relancez le workflow GitHub CEP v1.0.0)';
+                    : 'Altitude de ' + cityName + ' : — (relancez le workflow GitHub CEP)';
                 altitudeLine.classList.toggle('cep-altitude-missing', !finite(altitude));
             }
             selectedMapFocus = {
                 latitude: Number(commune[4]),
                 longitude: Number(commune[5]),
-                scale: 32
+                // L'IFS 0,25° a une maille d'environ 28 km : un zoom x6
+                // montre une région sans agrandir artificiellement 2 ou 3 mailles.
+                scale: 6
             };
             var mapApp = app.querySelector('[data-cepm-app]');
             if (mapApp) {

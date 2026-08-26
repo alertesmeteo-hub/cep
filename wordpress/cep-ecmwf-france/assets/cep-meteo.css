@@ -5,7 +5,7 @@
     --cep-line: #d9e5ed;
     --cep-soft: #f3f8fb;
     width: 100%;
-    max-width: 1180px;
+    max-width: 1480px;
     box-sizing: border-box;
     margin: 1.25rem auto;
     overflow: hidden;
@@ -242,7 +242,7 @@
 
 .cep-table {
     width: 100%;
-    min-width: 820px;
+    min-width: 980px;
     margin: 0;
     border: 0;
     border-collapse: separate;
@@ -270,7 +270,7 @@
 
 .cep-table tbody th,
 .cep-table tbody td {
-    padding: 8px 7px;
+    padding: 9px 10px;
     border: 0;
     border-bottom: 1px solid var(--cep-line);
     background: #fff;

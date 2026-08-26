@@ -37,13 +37,13 @@ from cep_maps import DEFAULT_BOUNDS, CEPMapRenderer
 
 
 LOGGER = logging.getLogger("cep.france")
-PIPELINE_VERSION = "1.1.0"
+PIPELINE_VERSION = "1.3.0"
 DATASET_PAGE = "https://www.ecmwf.int/en/forecasts/datasets/open-data"
 DEFAULT_CURRENT_METADATA_URL = (
     "https://raw.githubusercontent.com/alertesmeteo-hub/"
     "cep/data/index.json"
 )
-USER_AGENT = "alertes-meteo.com/cep-ecmwf-france/1.0"
+USER_AGENT = "alertes-meteo.com/cep-ecmwf-france/1.3.0"
 
 # Grille mondiale régulière IFS Open Data 0,25°.
 CEP_NI = 1440
@@ -381,6 +381,15 @@ def mask_missing(values: np.ndarray, missing_value: Any) -> np.ndarray:
 
 def message_field(gid: int) -> str | None:
     short_name = str(safe_get(gid, "shortName", ""))
+    if short_name == "z":
+        # Une requête ECMWF sur `z` renvoie le relief de surface puis de
+        # nombreux géopotentiels isobares. Sans ce filtre, le dernier message
+        # (500 hPa) écrasait le relief et donnait environ 5 800 m à Perpignan.
+        return (
+            "surface_geopotential"
+            if str(safe_get(gid, "typeOfLevel", "")) == "surface"
+            else None
+        )
     direct = {
         "2t": "temperature_k",
         "2d": "dewpoint_k",
@@ -399,7 +408,6 @@ def message_field(gid: int) -> str | None:
         "sf": "snow_total_m",
         "sd": "snow_depth_m",
         "vis": "visibility_m",
-        "z": "surface_geopotential",
     }
     if short_name in direct:
         return direct[short_name]
@@ -455,7 +463,7 @@ def inverse_mercator(value: np.ndarray) -> np.ndarray:
 
 
 class MapSampler:
-    """Rééchantillonne la grille régulière CEP sur la carte Web Mercator."""
+    """Rééchantillonne la grille CEP par spline bicubique sur Web Mercator."""
 
     def __init__(self, width: int, height: int) -> None:
         self.width = int(width)
@@ -482,8 +490,6 @@ class MapSampler:
         self.coverage = (
             (self.row_grid >= 0)
             & (self.row_grid <= CEP_NJ - 1)
-            & (self.column_grid >= 0)
-            & (self.column_grid <= CEP_NI - 1)
         )
 
     def extract(self, gid: int, validator: NationalGrid) -> np.ndarray:
@@ -492,13 +498,16 @@ class MapSampler:
             codes_get_double_array(gid, "values"),
             safe_get(gid, "missingValue"),
         ).reshape(CEP_NJ, CEP_NI)
+        interpolation_order = 3 if np.all(np.isfinite(values)) else 1
         sampled = map_coordinates(
             values,
             [self.row_grid, self.column_grid],
-            order=1,
-            mode="constant",
+            order=interpolation_order,
+            # La longitude IFS est périodique (-180 à 179,75°) ; grid-wrap
+            # conserve cette continuité au bord de la grille mondiale.
+            mode="grid-wrap",
             cval=np.nan,
-            prefilter=False,
+            prefilter=interpolation_order > 1,
         ).astype(np.float32, copy=False)
         sampled[~self.coverage] = np.nan
         return sampled
@@ -1008,6 +1017,12 @@ def build_product(
         france_departments=catalog.point_departments,
         boundary_directory=(
             Path(__file__).resolve().parents[1] / "config" / "natural-earth"
+        ),
+        department_boundary_path=(
+            Path(__file__).resolve().parents[1]
+            / "config"
+            / "france"
+            / "departements-version-simplifiee.geojson"
         ),
         pregridded=True,
     )

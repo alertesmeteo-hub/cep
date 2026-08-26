@@ -3,7 +3,7 @@ Contributors: alertesmeteo
 Tags: meteo, cep, ecmwf, ifs, carte, previsions, avada
 Requires at least: 5.8
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,18 @@ Les données proviennent directement d'ECMWF Open Data, modèle IFS déterminist
 Exemple : [cep_meteo code="75056" departement="75" ville="Paris" heures="240"]
 
 == Changelog ==
+
+= 1.3.0 =
+* Zonages météo rendus par interpolation bicubique puis isovaleurs remplies.
+* Rééchantillonnage continu de la grille mondiale en longitude.
+* Zoom automatique ramené de 3 200 % à 600 %, adapté à la maille IFS de 28 km.
+* Altitudes converties correctement du géopotentiel en mètres après reconstruction de la branche data.
+
+= 1.2.0 =
+* Limites départementales précises issues des tracés IGN, avec repli automatique sur les limites calculées.
+* Module élargi à 1 480 px et tableau général plus aéré sur grand écran.
+* Correction du maintien des surcouches de vent lors d'un zoom important.
+* Libellés de précipitations corrigés : l'IFS fournit ici des cumuls entre deux échéances (3 h puis 6 h), et non des cumuls horaires.
 
 = 1.1.0 =
 * Rendu en plages colorées lissées sur toutes les cartes CEP.
