@@ -77,7 +77,7 @@ const counters = {
 function make2dContext() {
     return {
         setTransform() {}, clearRect() {}, fillRect() {}, save() {}, restore() {},
-        beginPath() {}, moveTo() {}, lineTo() {},
+        beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {},
         translate() {}, scale() {}, drawImage() { counters.fallbackImages += 1; },
         getImageData() { return { data: new Uint8ClampedArray([128, 0, 128, 244]) }; },
         createImageData(width, height) {
@@ -142,11 +142,12 @@ class Canvas extends Element {
 
 const elements = {};
 const selectors = [
-    'menu-toggle', 'menu-close', 'layer-menu', 'layer-grid', 'current-layer',
+    'menu-toggle', 'menu-close', 'menu-label', 'menu-icon', 'layer-menu',
+    'layer-grid', 'current-layer',
     'previous', 'play', 'next', 'validity', 'lead', 'run', 'generated', 'stale',
     'viewport', 'map-title', 'map-run', 'map-date', 'loading', 'error', 'slider',
     'legend', 'zoom-in', 'zoom-out', 'reset', 'fullscreen', 'zoom-level',
-    'probe', 'probe-value', 'probe-label', 'single-timeline', 'period',
+    'probe', 'probe-value', 'probe-label', 'timeline', 'single-timeline', 'period',
     'dual-range', 'period-start', 'period-end', 'period-title',
     'period-summary', 'period-start-label', 'period-end-label', 'copy', 'capture',
     'advanced-tools'
@@ -391,9 +392,10 @@ vm.runInNewContext(fs.readFileSync(scriptPath, 'utf8'), context, { filename: scr
 
     assert.equal(elements['menu-close'].hidden, false);
     elements['menu-close'].click();
-    assert.equal(elements['menu-close'].hidden, true);
-    elements['menu-toggle'].click();
     assert.equal(elements['menu-close'].hidden, false);
+    assert.equal(elements['menu-label'].textContent, 'Déplier');
+    elements['menu-close'].click();
+    assert.equal(elements['menu-label'].textContent, 'Replier');
 
     elements.viewport.dispatch('pointermove', {
         pointerId: 0, pointerType: 'mouse', clientX: 500, clientY: 370
@@ -457,6 +459,7 @@ vm.runInNewContext(fs.readFileSync(scriptPath, 'utf8'), context, { filename: scr
     rainPeriod.click();
     await new Promise(resolve => setTimeout(resolve, 220));
     assert.equal(elements.period.hidden, false, 'Les deux curseurs restent masqués');
+    assert.equal(elements.timeline.hidden, true, 'L’ancien curseur reste affiché');
     assert.equal(elements['single-timeline'].hidden, true);
     assert.match(elements['period-summary'].textContent, /H\+7.*H\+10/);
     assert.ok(counters.periodRenders >= 1, 'La carte de période n’a pas été calculée');

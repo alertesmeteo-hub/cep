@@ -20,24 +20,24 @@
     };
 
     var THUNDER_RISKS = {
-        0: { label: 'Minimal', icon: '⚪' },
+        0: { label: 'Nul', icon: '⚪' },
         1: { label: 'Faible', icon: '🟢' },
         2: { label: 'Modéré', icon: '🟡' },
         3: { label: 'Fort', icon: '🟠' },
         4: { label: 'Sévère', icon: '🔴' }
     };
     var HAZARD_RISKS = {
-        0: 'Faible',
+        0: 'Nul',
         1: 'Faible',
         2: 'Modéré',
         3: 'Fort'
     };
     var STORM_TYPES = {
-        0: 'Pas d’orage organisé',
-        1: 'Cellules isolées',
-        2: 'Multicellulaire',
-        3: 'Ligne / MCS',
-        4: 'Convection très intense'
+        0: 'Pas de convection active',
+        1: 'Convection faible / isolée',
+        2: 'Convection probable',
+        3: 'Orage fort possible',
+        4: 'Convection sévère possible'
     };
     var SNOW_RISKS = {
         0: { label: 'Aucun', icon: '⚪' },
@@ -1004,7 +1004,7 @@
 
         function showTableMessage(message, error) {
             putMessage(generalBody, message, error, 10);
-            putMessage(stormBody, message, error, 13);
+            putMessage(stormBody, message, error, 14);
             putMessage(snowBody, message, error, 13);
             if (stormSummary) {
                 stormSummary.textContent = message;
@@ -1265,6 +1265,7 @@
                 capeCell.textContent = finite(cape) && Number(cape) >= 25 ? formatNumber(cape, 0) + ' J/kg' : '—';
                 capeCell.title = 'MUCAPE instantanée directement produite par CEP ; les valeurs quasi nulles ne sont pas affichées.';
                 stormRow.appendChild(capeCell);
+                appendNumber(stormRow, 'Intensité pluie', value(values, 'precipitation_rate_mmh'), 2, ' mm/h');
                 appendNumber(stormRow, 'LCL', value(values, 'lcl_m'), 0, ' m');
 
                 var lightning = value(values, 'lightning_score');
@@ -1448,7 +1449,7 @@
                     stormSummary.textContent = 'Diagnostics orageux présents, mais aucune valeur exploitable sur les échéances affichées.';
                 } else {
                     var maxRisk = THUNDER_RISKS[maxThunderRisk] || THUNDER_RISKS[0];
-                    stormSummary.textContent = 'Risque orageux maximal sur les ' + forecasts.length + ' prochaines échéances : ' + maxRisk.icon + ' ' + maxRisk.label + ' • diagnostic dérivé des champs CEP/IFS disponibles.';
+                    stormSummary.textContent = 'Risque orageux maximal sur les ' + forecasts.length + ' prochaines échéances : ' + maxRisk.icon + ' ' + maxRisk.label + ' • diagnostic indicatif croisant MUCAPE, précipitations actives, humidité et signaux convectifs ; la MUCAPE seule ne déclenche plus un risque.';
                 }
             }
             if (snowSummary) {
@@ -1477,6 +1478,7 @@
             selectedMapFocus = {
                 latitude: Number(commune[4]),
                 longitude: Number(commune[5]),
+                label: cityName + (postal ? ' (' + postal + ')' : ''),
                 // L'IFS 0,25° a une maille d'environ 28 km : un zoom x6
                 // montre une région sans agrandir artificiellement 2 ou 3 mailles.
                 scale: 6

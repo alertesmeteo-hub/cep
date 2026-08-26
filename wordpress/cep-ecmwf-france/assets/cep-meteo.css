@@ -21,17 +21,17 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 24px;
-    padding: 22px 26px;
+    gap: 16px;
+    padding: 11px 18px;
     background: linear-gradient(120deg, var(--cep-navy), #075887 62%, #0b83ac);
     color: #fff;
 }
 
 .cep-header h2 {
-    margin: 2px 0 5px;
+    margin: 1px 0 3px;
     color: #fff;
-    font-size: clamp(1.25rem, 2vw, 1.85rem);
-    line-height: 1.15;
+    font-size: clamp(1.16rem, 1.7vw, 1.6rem);
+    line-height: 1.1;
 }
 
 .cep-kicker,
@@ -41,14 +41,14 @@
 
 .cep-kicker {
     color: #aeefff;
-    font-size: .69rem;
+    font-size: .64rem;
     font-weight: 800;
     letter-spacing: .09em;
 }
 
 .cep-meta {
     color: #dceff7;
-    font-size: .82rem;
+    font-size: .74rem;
 }
 
 .cep-meta span {
@@ -56,19 +56,30 @@
 }
 
 .cep-badge {
-    min-width: 112px;
-    padding: 9px 12px;
+    display: inline-flex;
+    min-width: 0;
+    padding: 6px 10px;
+    align-items: baseline;
+    gap: 6px;
     border: 1px solid rgba(255, 255, 255, .45);
     border-radius: 10px;
     background: rgba(255, 255, 255, .12);
     text-align: center;
-    font-size: .72rem;
+    font-size: .68rem;
     letter-spacing: .08em;
     line-height: 1.05;
 }
 
 .cep-badge strong {
-    font-size: 1.18rem;
+    font-size: .98rem;
+    letter-spacing: .02em;
+}
+
+.cep-header-details {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 13px;
 }
 
 .cep-card [hidden] {
@@ -77,10 +88,10 @@
 
 .cep-toolbar {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
-    gap: 22px;
-    padding: 18px 22px;
+    gap: 14px;
+    padding: 10px 18px;
     border-bottom: 1px solid #cfe0e9;
     background: linear-gradient(180deg, #f7fbfd, #edf6fa);
 }
@@ -88,15 +99,22 @@
 .cep-search {
     position: relative;
     z-index: 5;
-    width: min(100%, 590px);
+    width: min(100%, 1160px);
 }
 
-.cep-search > label {
-    display: block;
-    margin: 0 0 6px;
+.cep-search-mainline {
+    display: grid;
+    grid-template-columns: auto minmax(250px, 410px) auto minmax(250px, 1fr);
+    align-items: center;
+    gap: 9px;
+}
+
+.cep-search-mainline > label {
+    margin: 0;
     color: var(--cep-navy);
     font-size: .82rem;
     font-weight: 800;
+    white-space: nowrap;
 }
 
 .cep-search-control {
@@ -118,7 +136,7 @@
 .cep-card .cep-city-input {
     box-sizing: border-box;
     width: 100%;
-    height: 46px;
+    height: 42px;
     margin: 0;
     padding: 9px 42px;
     border: 2px solid #86b6ca;
@@ -142,7 +160,7 @@
 
 .cep-search-results {
     position: absolute;
-    top: 72px;
+    top: calc(100% + 6px);
     right: 0;
     left: 0;
     z-index: 20;
@@ -198,8 +216,9 @@
 }
 
 .cep-search-status {
-    min-height: 18px;
-    margin: 5px 2px 0;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
     color: #55717f;
     font-size: .72rem;
 }
@@ -214,7 +233,7 @@
     flex: 0 0 auto;
     flex-direction: column;
     align-items: flex-end;
-    padding-top: 22px;
+    padding-top: 0;
     color: #496978;
     font-size: .72rem;
 }
@@ -397,16 +416,25 @@
 
     .cep-header {
         align-items: flex-start;
-        padding: 17px;
+        padding: 10px 12px;
     }
 
     .cep-toolbar {
         display: block;
-        padding: 15px;
+        padding: 11px;
     }
 
     .cep-search {
         width: 100%;
+    }
+
+    .cep-search-mainline {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+
+    .cep-search-mainline > label {
+        white-space: normal;
     }
 
     .cep-card .cep-search-result {
@@ -428,7 +456,7 @@
     }
 
     .cep-badge {
-        min-width: 86px;
+        padding: 5px 7px;
     }
 
     .cep-footer {
@@ -529,7 +557,7 @@
 }
 
 .cep-storm-table {
-    min-width: 1680px;
+    min-width: 1800px;
     font-size: .77rem;
 }
 
@@ -1119,21 +1147,19 @@
 /* === Altitude visible et profil neige expert === */
 .cep-city-altitude {
     display: inline-flex;
-    margin: 7px 0 4px;
-    padding: 5px 9px;
+    margin: 0;
+    padding: 0;
     align-items: center;
-    border: 1px solid #c8dbe3;
-    border-radius: 999px;
-    background: #f2f8fa;
-    color: #245b70;
-    font-size: .76rem;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #ccecf7;
+    font-size: .73rem;
     font-weight: 850;
     line-height: 1.2;
 }
 .cep-city-altitude.cep-altitude-missing {
-    border-color: #e2ca84;
-    background: #fff7dd;
-    color: #795b05;
+    color: #ffe5a1;
 }
 
 .cep-snow-table {
@@ -1618,8 +1644,8 @@
 
 .cep-card .cep-locate-button {
     display: inline-flex;
-    min-height: 36px;
-    margin: 8px 0 0;
+    min-height: 42px;
+    margin: 0;
     padding: 7px 12px;
     align-items: center;
     justify-content: center;
@@ -1643,11 +1669,6 @@
 .cep-card .cep-locate-button.is-loading {
     opacity: .65;
     cursor: wait;
-}
-
-/* Le bouton ajoute de la hauteur sous le champ : la liste de résultats descend. */
-.cep-search-results {
-    top: 116px;
 }
 
 @media (max-width: 680px) {
@@ -1681,7 +1702,7 @@
     }
 
     .cep-card .cep-locate-button {
-        width: 100%;
+        width: max-content;
     }
 }
 

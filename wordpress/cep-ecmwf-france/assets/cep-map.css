@@ -3,13 +3,22 @@
     --cepm-dark: #073b63;
 }
 
+.cepm-header {
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
+.cepm-header h2 {
+    font-size: clamp(1.02rem, 1.45vw, 1.35rem);
+}
+
 .cepm-card [hidden] {
     display: none !important;
 }
 
 .cepm-toolbar {
     display: grid;
-    grid-template-columns: minmax(220px, 1fr) auto auto minmax(220px, 1fr);
+    grid-template-columns: minmax(220px, 1fr) auto auto minmax(300px, 1fr);
     align-items: end;
     gap: 16px;
     padding: 15px 20px;
@@ -70,7 +79,7 @@
     width: 100%;
     height: 43px;
     margin: 0;
-    padding: 7px 38px 7px 11px;
+    padding: 7px 11px;
     border: 1px solid #8eb8ca;
     border-radius: 8px;
     outline: 0;
@@ -126,7 +135,7 @@
 .cepm-card .cepm-layer-trigger {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 12px;
     min-width: 0;
     text-align: left;
@@ -135,16 +144,6 @@
 .cepm-layer-trigger:hover,
 .cepm-layer-trigger[aria-expanded="true"] {
     background: #e8f2fb;
-}
-
-.cepm-layer-chevron {
-    color: #1d62a2;
-    font-size: 1.15rem;
-    transition: transform .18s ease;
-}
-
-.cepm-layer-trigger[aria-expanded="true"] .cepm-layer-chevron {
-    transform: rotate(180deg);
 }
 
 .cepm-layer-menu {
@@ -157,6 +156,7 @@
 }
 
 .cepm-layer-menu-head {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -182,15 +182,54 @@
     font-size: .68rem;
 }
 
-.cepm-card .cepm-layer-menu-head button {
-    min-width: 30px;
-    min-height: 30px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: #345573;
-    box-shadow: none;
-    font-size: 1.25rem;
+.cepm-validity-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.cepm-card .cepm-menu-close {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-width: 94px;
+    min-height: 34px;
+    padding: 6px 10px 6px 13px;
+    border: 1px solid #164e7c;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #163f6d, #087faa);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(10, 55, 91, .24);
+    font-size: .72rem;
+    letter-spacing: .02em;
+}
+
+.cepm-card .cepm-menu-close:hover,
+.cepm-card .cepm-menu-close:focus-visible {
+    border-color: #073b63;
+    background: linear-gradient(135deg, #0b315b, #066d99);
+    color: #fff;
+    box-shadow: 0 5px 15px rgba(10, 55, 91, .32);
+    transform: translateY(-1px);
+}
+
+.cepm-menu-close-icon {
+    display: grid;
+    width: 20px;
+    height: 20px;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .2);
+    font-size: 1rem;
+    line-height: 1;
+    transition: transform .18s ease;
+}
+
+.cepm-menu-close[aria-expanded="true"] .cepm-menu-close-icon {
+    transform: rotate(0deg);
 }
 
 .cepm-layer-grid {
@@ -293,7 +332,7 @@
     overflow: hidden;
     background: #dceef5;
     box-shadow: inset 0 0 0 1px rgba(17, 58, 80, .18);
-    cursor: grab;
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='white' stroke-width='3' opacity='.95'/%3E%3Cpath d='M16 3v8M16 21v8M3 16h8M21 16h8' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23083d5c' stroke-width='1.5'/%3E%3Cpath d='M16 3v8M16 21v8M3 16h8M21 16h8' stroke='%23083d5c' stroke-width='1.5' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='16' r='2' fill='%2300a5c7' stroke='white' stroke-width='1'/%3E%3C/svg%3E") 16 16, crosshair;
     touch-action: none;
     user-select: none;
 }
@@ -483,7 +522,7 @@
 .cepm-advanced-tools {
     position: absolute;
     top: 60px;
-    right: 12px;
+    right: 112px;
     z-index: 9;
     display: flex;
     flex-direction: column;
@@ -648,6 +687,143 @@
     font-size: .66rem;
 }
 
+.cepm-period-selector {
+    --cepm-period-start: 0%;
+    --cepm-period-end: 35%;
+    padding: 12px 20px 10px;
+    border-top: 1px solid #b9d7e3;
+    border-bottom: 1px solid #9ec5d6;
+    background: linear-gradient(180deg, #f2fbfe, #e6f5fa);
+    box-shadow: inset 0 1px 0 #fff;
+}
+
+.cepm-period-head,
+.cepm-period-values {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.cepm-period-head {
+    margin-bottom: 8px;
+    color: #123f60;
+}
+
+.cepm-period-head > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.cepm-period-head strong {
+    font-size: .86rem;
+}
+
+.cepm-period-head small {
+    color: #587483;
+    font-size: .68rem;
+    font-weight: 700;
+}
+
+.cepm-period-head span {
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #e1f1f8;
+    color: #0874aa;
+    font-size: .72rem;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+}
+
+.cepm-dual-range {
+    position: relative;
+    height: 30px;
+}
+
+.cepm-dual-range-track {
+    position: absolute;
+    top: 12px;
+    right: 0;
+    left: 0;
+    height: 7px;
+    border-radius: 999px;
+    background: linear-gradient(
+        to right,
+        #c8d9e1 0 var(--cepm-period-start),
+        #08a0c6 var(--cepm-period-start) var(--cepm-period-end),
+        #c8d9e1 var(--cepm-period-end) 100%
+    );
+    box-shadow: inset 0 1px 2px rgba(8, 49, 70, .2);
+}
+
+.cepm-card .cepm-dual-range input[type="range"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 30px;
+    margin: 0;
+    appearance: none;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    pointer-events: none;
+}
+
+.cepm-card .cepm-dual-range input[type="range"]::-webkit-slider-runnable-track {
+    height: 7px;
+    background: transparent;
+}
+
+.cepm-card .cepm-dual-range input[type="range"]::-webkit-slider-thumb {
+    width: 21px;
+    height: 21px;
+    margin-top: -7px;
+    appearance: none;
+    border: 3px solid #087ca8;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 7px rgba(4, 51, 75, .34);
+    cursor: ew-resize;
+    pointer-events: auto;
+}
+
+.cepm-card .cepm-dual-range input[type="range"]::-moz-range-track {
+    height: 7px;
+    background: transparent;
+}
+
+.cepm-card .cepm-dual-range input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border: 3px solid #087ca8;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 7px rgba(4, 51, 75, .34);
+    cursor: ew-resize;
+    pointer-events: auto;
+}
+
+.cepm-period-values span {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    color: #385f72;
+}
+
+.cepm-period-values small {
+    color: #6a8490;
+    font-size: .65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.cepm-period-values strong {
+    font-size: .75rem;
+    font-variant-numeric: tabular-nums;
+}
+
 .cepm-legend {
     position: absolute;
     right: 0;
@@ -768,6 +944,16 @@
         align-items: flex-end;
     }
 
+    .cepm-validity-actions {
+        gap: 7px;
+    }
+
+    .cepm-card .cepm-menu-close {
+        min-width: 78px;
+        padding-right: 7px;
+        padding-left: 10px;
+    }
+
     .cepm-viewport {
         width: 100%;
         max-height: none;
@@ -787,6 +973,25 @@
     .cepm-timeline {
         padding-right: 13px;
         padding-left: 13px;
+    }
+
+    .cepm-period-selector {
+        padding-right: 13px;
+        padding-left: 13px;
+    }
+
+    .cepm-period-head {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .cepm-period-values {
+        gap: 8px;
+    }
+
+    .cepm-period-values strong {
+        font-size: .67rem;
     }
 
     .cepm-map-titlebar {

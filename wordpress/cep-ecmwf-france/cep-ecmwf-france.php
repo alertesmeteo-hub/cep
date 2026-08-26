@@ -3,7 +3,7 @@
  * Plugin Name: CEP / ECMWF France — Tableaux et cartes
  * Plugin URI: https://github.com/alertesmeteo-hub/cep
  * Description: Cartes interactives et prévisions du modèle déterministe CEP/ECMWF IFS pour la France métropolitaine et la Corse.
- * Version: 1.3.0
+ * Version: 1.5.2
  * Author: Alertes Météo Hub
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('CEP_VERSION', '1.3.0');
+define('CEP_VERSION', '1.5.2');
 define('CEP_RELEASE_DATE', '26/08/2026');
 define('CEP_OPTION_BASE_URL', 'cep_national_data_base_url');
 define(
@@ -183,6 +183,7 @@ function cep_map_variable($value) {
         'graupel',
         'vent',
         'rafales',
+        'rafales_max',
         'pression',
         'pression_surface',
         'nebulosite',
@@ -243,7 +244,7 @@ function cep_render_map_shortcode($atts) {
                 <h2><?php echo esc_html($title); ?></h2>
                 <p class="cep-meta" data-cepm-run>Chargement du dernier run CEP…</p>
             </div>
-            <div class="cep-badge">CEP<br><strong>0,25°</strong></div>
+            <div class="cep-badge"><span>CEP</span><strong>0,25°</strong></div>
         </header>
 
         <div class="cepm-toolbar">
@@ -257,7 +258,6 @@ function cep_render_map_shortcode($atts) {
                     aria-controls="<?php echo esc_attr($map_id . '-layers'); ?>"
                 >
                     <span data-cepm-current-layer>Température à 2 m</span>
-                    <span class="cepm-layer-chevron" aria-hidden="true">⌄</span>
                 </button>
             </div>
             <div class="cepm-tools" aria-label="Outils de la carte">
@@ -266,7 +266,7 @@ function cep_render_map_shortcode($atts) {
                     class="cepm-tool-toggle"
                     data-cepm-tool="zoom"
                     aria-pressed="false"
-                    title="Afficher les outils de capture et d’épinglage"
+                    title="Afficher les outils de capture et de copie"
                 >🔍 Zoom interactif</button>
                 <button
                     type="button"
@@ -281,10 +281,22 @@ function cep_render_map_shortcode($atts) {
                 <button type="button" data-cepm-play title="Lancer l’animation" aria-label="Lancer l’animation">▶</button>
                 <button type="button" data-cepm-next title="Échéance suivante" aria-label="Échéance suivante">▶</button>
             </div>
-            <div class="cepm-validity">
-                <span>Prévision valable</span>
-                <strong data-cepm-validity>—</strong>
-                <small data-cepm-lead>—</small>
+            <div class="cepm-validity-actions">
+                <button
+                    type="button"
+                    class="cepm-menu-close"
+                    data-cepm-menu-close
+                    aria-label="Déplier le menu des cartes"
+                    aria-expanded="false"
+                    aria-controls="<?php echo esc_attr($map_id . '-layers'); ?>"
+                >
+                    <span data-cepm-menu-label>Déplier</span><span class="cepm-menu-close-icon" data-cepm-menu-icon aria-hidden="true">⌄</span>
+                </button>
+                <div class="cepm-validity">
+                    <span>Prévision valable</span>
+                    <strong data-cepm-validity>—</strong>
+                    <small data-cepm-lead>—</small>
+                </div>
             </div>
         </div>
 
@@ -301,9 +313,27 @@ function cep_render_map_shortcode($atts) {
                     <strong>Choisir une carte CEP</strong>
                     <small>Paramètres disponibles dans la production ouverte ECMWF IFS</small>
                 </div>
-                <button type="button" data-cepm-menu-close aria-label="Réduire le menu">×</button>
             </div>
             <div class="cepm-layer-grid" data-cepm-layer-grid></div>
+        </div>
+
+        <div class="cepm-period-selector" data-cepm-period hidden>
+            <div class="cepm-period-head">
+                <div>
+                    <strong data-cepm-period-title>Période personnalisée</strong>
+                    <small>Déplacez les deux curseurs pour choisir précisément le début et la fin.</small>
+                </div>
+                <span data-cepm-period-summary>—</span>
+            </div>
+            <div class="cepm-dual-range" data-cepm-dual-range>
+                <div class="cepm-dual-range-track" aria-hidden="true"></div>
+                <input data-cepm-period-start type="range" min="0" max="1" value="0" step="1" aria-label="Début de la période">
+                <input data-cepm-period-end type="range" min="0" max="1" value="1" step="1" aria-label="Fin de la période">
+            </div>
+            <div class="cepm-period-values">
+                <span><small>Du</small><strong data-cepm-period-start-label>—</strong></span>
+                <span><small>Au</small><strong data-cepm-period-end-label>—</strong></span>
+            </div>
         </div>
 
         <p class="cep-stale" data-cepm-stale role="status" hidden>
@@ -333,8 +363,8 @@ function cep_render_map_shortcode($atts) {
                 <button type="button" data-cepm-fullscreen title="Plein écran" aria-label="Plein écran">⛶</button>
             </div>
             <div class="cepm-advanced-tools" data-cepm-advanced-tools hidden aria-label="Outils avancés">
-                <button type="button" data-cepm-capture title="Capturer l’image affichée" aria-label="Capturer l’image affichée">📷 Capture PNG</button>
-                <button type="button" data-cepm-pin title="Épingler la valeur au clic" aria-label="Épingler la valeur au clic" aria-pressed="false">📌 Figer la valeur</button>
+                <button type="button" data-cepm-copy title="Copier la carte pour la coller dans un message ou un document" aria-label="Copier la carte dans le presse-papiers">📋 Copier l’image</button>
+                <button type="button" data-cepm-capture title="Télécharger la carte au format PNG" aria-label="Télécharger la carte au format PNG">📷 Télécharger PNG</button>
             </div>
             <div class="cepm-diagram-popup" data-cepm-diagram-popup hidden>
                 <header>
@@ -353,9 +383,11 @@ function cep_render_map_shortcode($atts) {
             <div class="cepm-error" data-cepm-error role="alert" hidden></div>
         </div>
 
-        <div class="cepm-timeline">
-            <input data-cepm-slider type="range" min="0" max="0" value="0" step="1" aria-label="Échéance de prévision">
-            <div class="cepm-timeline-labels"><span>Run</span><span>Échéance maximale</span></div>
+        <div class="cepm-timeline" data-cepm-timeline>
+            <div data-cepm-single-timeline>
+                <input data-cepm-slider type="range" min="0" max="0" value="0" step="1" aria-label="Échéance de prévision">
+                <div class="cepm-timeline-labels"><span>Run</span><span>Échéance maximale</span></div>
+            </div>
         </div>
 
         <footer class="cep-footer">
@@ -431,45 +463,49 @@ function cep_render_shortcode($atts) {
             <div>
                 <p class="cep-kicker">MODÈLE DÉTERMINISTE • FRANCE MÉTROPOLITAINE</p>
                 <h2 data-cep-title><?php echo esc_html($title_prefix . ' — ' . $city_name); ?></h2>
-                <p class="cep-city-altitude" data-cep-altitude>Altitude de <?php echo esc_html($city_name); ?> : chargement…</p>
-                <p class="cep-meta" data-cep-meta>Chargement du dernier run CEP…</p>
+                <div class="cep-header-details">
+                    <p class="cep-city-altitude" data-cep-altitude>Altitude de <?php echo esc_html($city_name); ?> : chargement…</p>
+                    <p class="cep-meta" data-cep-meta>Chargement du dernier run CEP…</p>
+                </div>
             </div>
-            <div class="cep-badge">CEP<br><strong>0,25°</strong></div>
+            <div class="cep-badge"><span>CEP</span><strong>0,25°</strong></div>
         </header>
 
         <div class="cep-toolbar" <?php if (!$show_selector) : ?>hidden<?php endif; ?>>
             <div class="cep-search">
-                <label for="<?php echo esc_attr($input_id); ?>">Choisissez votre commune</label>
-                <div class="cep-search-control">
-                    <span class="cep-search-icon" aria-hidden="true">⌕</span>
-                    <input
-                        id="<?php echo esc_attr($input_id); ?>"
-                        class="cep-city-input"
-                        type="search"
-                        value="<?php echo esc_attr($city_name); ?>"
-                        placeholder="Nom de commune ou code postal"
-                        autocomplete="off"
-                        spellcheck="false"
-                        role="combobox"
-                        aria-autocomplete="list"
-                        aria-expanded="false"
-                        aria-controls="<?php echo esc_attr($results_id); ?>"
-                        aria-describedby="<?php echo esc_attr($status_id); ?>"
-                    >
+                <div class="cep-search-mainline">
+                    <label for="<?php echo esc_attr($input_id); ?>">Choisissez votre commune</label>
+                    <div class="cep-search-control">
+                        <span class="cep-search-icon" aria-hidden="true">⌕</span>
+                        <input
+                            id="<?php echo esc_attr($input_id); ?>"
+                            class="cep-city-input"
+                            type="search"
+                            value="<?php echo esc_attr($city_name); ?>"
+                            placeholder="Nom de commune ou code postal"
+                            autocomplete="off"
+                            spellcheck="false"
+                            role="combobox"
+                            aria-autocomplete="list"
+                            aria-expanded="false"
+                            aria-controls="<?php echo esc_attr($results_id); ?>"
+                            aria-describedby="<?php echo esc_attr($status_id); ?>"
+                        >
+                    </div>
+                    <button type="button" class="cep-locate-button" data-cep-locate>📍 Détecter ma ville</button>
+                    <p
+                        id="<?php echo esc_attr($status_id); ?>"
+                        class="cep-search-status"
+                        role="status"
+                        aria-live="polite"
+                    >Saisissez au moins deux lettres ou un code postal.</p>
                 </div>
-                <button type="button" class="cep-locate-button" data-cep-locate>📍 Détecter ma ville</button>
                 <div
                     id="<?php echo esc_attr($results_id); ?>"
                     class="cep-search-results"
                     role="listbox"
                     hidden
                 ></div>
-                <p
-                    id="<?php echo esc_attr($status_id); ?>"
-                    class="cep-search-status"
-                    role="status"
-                    aria-live="polite"
-                >Saisissez au moins deux lettres ou un code postal.</p>
             </div>
             <div class="cep-coverage">
                 <strong>34 746 communes</strong>
@@ -584,6 +620,7 @@ function cep_render_shortcode($atts) {
                             <th scope="col">Heure</th>
                             <th scope="col">Risque orage</th>
                             <th scope="col">MUCAPE</th>
+                            <th scope="col">Intensité pluie</th>
                             <th scope="col">LCL estimé</th>
                             <th scope="col">Foudre</th>
                             <th scope="col">Grêle</th>
@@ -597,13 +634,13 @@ function cep_render_shortcode($atts) {
                     </thead>
                     <tbody data-cep-body-storms>
                         <tr>
-                            <td colspan="13" class="cep-loading">Chargement du diagnostic orageux…</td>
+                            <td colspan="14" class="cep-loading">Chargement du diagnostic orageux…</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
             <p class="cep-storm-note">
-                <strong>Lecture expert :</strong> la MUCAPE et la réflectivité maximale sont des sorties directes CEP. Le risque, la foudre, la grêle et le type d’orage sont des diagnostics dérivés clairement signalés ; aucune valeur indisponible n’est inventée.
+                <strong>Lecture expert :</strong> la MUCAPE et le taux de précipitation sont des sorties directes IFS. Le risque est un diagnostic indicatif qui exige à la fois de l’instabilité et un signal convectif actif ; la MUCAPE seule ne suffit jamais. La foudre, la grêle et le type sont des estimations dérivées clairement signalées.
             </p>
         </div>
 

@@ -74,6 +74,8 @@
 
         var menuToggle = app.querySelector('[data-cepm-menu-toggle]');
         var menuClose = app.querySelector('[data-cepm-menu-close]');
+        var menuCloseLabel = app.querySelector('[data-cepm-menu-label]');
+        var menuCloseIcon = app.querySelector('[data-cepm-menu-icon]');
         var layerMenu = app.querySelector('[data-cepm-layer-menu]');
         var layerGrid = app.querySelector('[data-cepm-layer-grid]');
         var currentLayerText = app.querySelector('[data-cepm-current-layer]');
@@ -97,6 +99,16 @@
         var loading = app.querySelector('[data-cepm-loading]');
         var errorBox = app.querySelector('[data-cepm-error]');
         var slider = app.querySelector('[data-cepm-slider]');
+        var timeline = app.querySelector('[data-cepm-timeline]');
+        var singleTimeline = app.querySelector('[data-cepm-single-timeline]');
+        var periodSelector = app.querySelector('[data-cepm-period]');
+        var dualRange = app.querySelector('[data-cepm-dual-range]');
+        var periodStartSlider = app.querySelector('[data-cepm-period-start]');
+        var periodEndSlider = app.querySelector('[data-cepm-period-end]');
+        var periodTitle = app.querySelector('[data-cepm-period-title]');
+        var periodSummary = app.querySelector('[data-cepm-period-summary]');
+        var periodStartLabel = app.querySelector('[data-cepm-period-start-label]');
+        var periodEndLabel = app.querySelector('[data-cepm-period-end-label]');
         var legend = app.querySelector('[data-cepm-legend]');
         var zoomIn = app.querySelector('[data-cepm-zoom-in]');
         var zoomOut = app.querySelector('[data-cepm-zoom-out]');
@@ -110,7 +122,7 @@
         var toolHint = app.querySelector('[data-cepm-tool-hint]');
         var advancedTools = app.querySelector('[data-cepm-advanced-tools]');
         var captureButton = app.querySelector('[data-cepm-capture]');
-        var pinButton = app.querySelector('[data-cepm-pin]');
+        var copyButton = app.querySelector('[data-cepm-copy]');
         var diagramPopup = app.querySelector('[data-cepm-diagram-popup]');
         var diagramTitle = app.querySelector('[data-cepm-diagram-title]');
         var diagramBody = app.querySelector('[data-cepm-diagram-body]');
@@ -145,12 +157,17 @@
         var fallbackContext = null;
         var maxScale = 64;
         var pendingFocus = null;
+        var focusedLocation = null;
         var toolMode = null;
         var pinnedEnabled = false;
         var pinnedPoint = null;
         var tapStart = null;
         var departmentCache = new Map();
         var diagramLoadToken = 0;
+        var periodStart = 0;
+        var periodEnd = 0;
+        var periodTimer = null;
+        var periodProbeCache = new Map();
 
         var validityFormat;
         var runFormat;
@@ -244,6 +261,10 @@
         }
 
         function probeCell(grid, x, y) {
+            if (grid.values) {
+                var stored = grid.values[y * grid.width + x];
+                return Number.isFinite(stored) ? stored : null;
+            }
             var code = grid.view.getUint16(
                 16 + (y * grid.width + x) * 2,
                 true
@@ -284,6 +305,181 @@
                 weight += entry[2];
             });
             return weight > 0 ? total / weight : null;
+        }
+
+        function probeValues(grid) {
+            if (grid.values) {
+                return grid.values;
+            }
+            var count = grid.width * grid.height;
+            var values = new Float32Array(count);
+            var span = grid.maximum - grid.minimum;
+            for (var index = 0; index < count; index += 1) {
+                var code = grid.view.getUint16(16 + index * 2, true);
+                values[index] = code === 65535
+                    ? NaN
+                    : grid.minimum + code / 65534 * span;
+            }
+            grid.values = values;
+            return values;
+        }
+
+        function colourForValue(value, layer) {
+            if (!Number.isFinite(value) || !layer ||
+                    !Array.isArray(layer.stops) || layer.stops.length < 2 ||
+                    (layer.transparent_below !== null &&
+                    layer.transparent_below !== undefined &&
+                    value < Number(layer.transparent_below))) {
+                return [0, 0, 0, 0];
+            }
+            var stops = layer.stops;
+            var clipped = clamp(
+                value,
+                Number(stops[0].value),
+                Number(stops[stops.length - 1].value)
+            );
+            var upper = 1;
+            while (upper < stops.length &&
+                    clipped >= Number(stops[upper].value)) {
+                upper += 1;
+            }
+            upper = clamp(upper, 1, stops.length - 1);
+            var lower = upper - 1;
+            var first = parseColour(stops[lower].color);
+            var colour = first;
+            if (!layer.discrete) {
+                var second = parseColour(stops[upper].color);
+                var lowValue = Number(stops[lower].value);
+                var highValue = Number(stops[upper].value);
+                var fraction = highValue === lowValue ? 0 :
+                    clamp((clipped - lowValue) / (highValue - lowValue), 0, 1);
+                colour = [
+                    Math.round(first[0] + (second[0] - first[0]) * fraction),
+                    Math.round(first[1] + (second[1] - first[1]) * fraction),
+                    Math.round(first[2] + (second[2] - first[2]) * fraction)
+                ];
+            }
+            return [
+                colour[0], colour[1], colour[2],
+                clamp(Number(layer.opacity) || 244, 0, 255)
+            ];
+        }
+
+        function renderProbeGrid(grid, layer) {
+            var canvas = document.createElement('canvas');
+            canvas.width = grid.width;
+            canvas.height = grid.height;
+            var context = canvas.getContext('2d');
+            var imageData = context.createImageData(grid.width, grid.height);
+            var pixels = imageData.data;
+            var values = probeValues(grid);
+            for (var index = 0; index < values.length; index += 1) {
+                var colour = colourForValue(values[index], layer);
+                var offset = index * 4;
+                pixels[offset] = colour[0];
+                pixels[offset + 1] = colour[1];
+                pixels[offset + 2] = colour[2];
+                pixels[offset + 3] = colour[3];
+            }
+            context.putImageData(imageData, 0, 0);
+            return canvas;
+        }
+
+        function fetchPeriodProbe(step, sourceKey) {
+            var path = step && step.probes && step.probes[sourceKey];
+            if (!path) {
+                return Promise.reject(new Error('grille numérique absente'));
+            }
+            var cacheKey = versioned(path);
+            if (periodProbeCache.has(cacheKey)) {
+                return periodProbeCache.get(cacheKey);
+            }
+            var promise = fetchBuffer(cacheKey)
+                .then(decompressIfNeeded)
+                .then(parseProbe)
+                .catch(function (error) {
+                    periodProbeCache.delete(cacheKey);
+                    throw error;
+                });
+            periodProbeCache.set(cacheKey, promise);
+            while (periodProbeCache.size > 18) {
+                periodProbeCache.delete(periodProbeCache.keys().next().value);
+            }
+            return promise;
+        }
+
+        function fetchProbeSeries(steps, sourceKey, progress) {
+            var grids = new Array(steps.length);
+            var cursor = 0;
+            var completed = 0;
+            function worker() {
+                if (cursor >= steps.length) {
+                    return Promise.resolve();
+                }
+                var index = cursor;
+                cursor += 1;
+                return fetchPeriodProbe(steps[index], sourceKey).then(function (grid) {
+                    grids[index] = grid;
+                    completed += 1;
+                    if (progress) {
+                        progress(completed, steps.length);
+                    }
+                    return worker();
+                });
+            }
+            var workers = [];
+            for (var index = 0; index < Math.min(5, steps.length); index += 1) {
+                workers.push(worker());
+            }
+            return Promise.all(workers).then(function () { return grids; });
+        }
+
+        function combinePeriodGrids(grids, mode) {
+            if (!grids.length) {
+                throw new Error('aucune échéance dans la période');
+            }
+            var width = grids[0].width;
+            var height = grids[0].height;
+            var count = width * height;
+            grids.forEach(function (grid) {
+                if (grid.width !== width || grid.height !== height) {
+                    throw new Error('grilles de période incompatibles');
+                }
+            });
+            var combined = new Float32Array(count);
+            combined.fill(NaN);
+            if (mode === 'difference') {
+                var startValues = probeValues(grids[0]);
+                var endValues = probeValues(grids[grids.length - 1]);
+                for (var index = 0; index < count; index += 1) {
+                    if (Number.isFinite(startValues[index]) &&
+                            Number.isFinite(endValues[index])) {
+                        combined[index] = Math.max(
+                            0, endValues[index] - startValues[index]
+                        );
+                    }
+                }
+            } else {
+                grids.forEach(function (grid) {
+                    var values = probeValues(grid);
+                    for (var index = 0; index < count; index += 1) {
+                        if (Number.isFinite(values[index]) &&
+                                (!Number.isFinite(combined[index]) ||
+                                values[index] > combined[index])) {
+                            combined[index] = values[index];
+                        }
+                    }
+                });
+            }
+            return {
+                width: width,
+                height: height,
+                minimum: 0,
+                maximum: Math.max.apply(null, grids.map(function (grid) {
+                    return grid.maximum;
+                })),
+                values: combined
+            };
         }
 
         function parseColour(value) {
@@ -652,11 +848,8 @@
             if (advancedTools) {
                 advancedTools.hidden = toolMode !== 'zoom';
             }
-            if (toolMode !== 'zoom' && pinnedEnabled) {
+            if (toolMode !== 'zoom') {
                 pinnedEnabled = false;
-                if (pinButton) {
-                    pinButton.setAttribute('aria-pressed', 'false');
-                }
                 clearPinned();
             }
             if (toolMode === 'diagram') {
@@ -667,19 +860,181 @@
             }
         }
 
+        function fitCaptureText(context, value, maximumWidth) {
+            var text = String(value || '');
+            if (!context.measureText || context.measureText(text).width <= maximumWidth) {
+                return text;
+            }
+            while (text.length > 3 && context.measureText(text + '…').width > maximumWidth) {
+                text = text.slice(0, -1);
+            }
+            return text + '…';
+        }
+
+        function drawCaptureLegend(context, layer, width, top, footerHeight) {
+            var stops = layer && Array.isArray(layer.stops) ? layer.stops : [];
+            context.fillStyle = '#0d0e17';
+            context.fillRect(0, top, width, footerHeight);
+            context.fillStyle = '#ffffff';
+            context.font = '800 13px Inter, Segoe UI, Arial, sans-serif';
+            context.textAlign = 'left';
+            context.fillText(
+                'LÉGENDE' + (layer && layer.unit ? ' — ' + layer.unit : ''),
+                16,
+                top + 22
+            );
+            if (stops.length) {
+                var legendLeft = 16;
+                var legendWidth = width - 32;
+                var segmentWidth = legendWidth / stops.length;
+                stops.forEach(function (stop, index) {
+                    var left = legendLeft + index * segmentWidth;
+                    context.fillStyle = stop.color || '#777777';
+                    context.fillRect(left, top + 31, Math.ceil(segmentWidth), 18);
+                    context.fillStyle = '#ffffff';
+                    context.font = '700 ' + (stops.length > 18 ? 8 : 9) +
+                        'px Inter, Segoe UI, Arial, sans-serif';
+                    context.textAlign = 'center';
+                    context.fillText(String(stop.value), left + segmentWidth / 2, top + 62);
+                });
+            }
+            context.textAlign = 'left';
+            context.fillStyle = '#cdd8e6';
+            context.font = '600 10px Inter, Segoe UI, Arial, sans-serif';
+            var details = [
+                validity ? validity.textContent : '',
+                lead ? lead.textContent : '',
+                'Zoom ' + Math.round(transform.scale * 100) + ' %'
+            ].filter(Boolean).join(' • ');
+            context.fillText(fitCaptureText(context, details, width * 0.58), 16, top + 84);
+            context.textAlign = 'right';
+            context.fillText(
+                fitCaptureText(
+                    context,
+                    'ECMWF Open Data • www.alertes-meteo.com • Module v' + moduleVersion,
+                    width * 0.38
+                ),
+                width - 16,
+                top + 84
+            );
+            context.textAlign = 'left';
+        }
+
         function composeCaptureCanvas() {
-            if (!weatherCanvas || !weatherCanvas.width) {
+            if (!viewport || !currentWeatherImage) {
                 return null;
             }
+            var width = viewport.clientWidth;
+            var height = viewport.clientHeight;
+            if (!width || !height) {
+                return null;
+            }
+            var pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+            var headerHeight = 116;
+            var footerHeight = 96;
+            var totalHeight = headerHeight + height + footerHeight;
             var output = document.createElement('canvas');
-            output.width = weatherCanvas.width;
-            output.height = weatherCanvas.height;
+            output.width = Math.max(1, Math.round(width * pixelRatio));
+            output.height = Math.max(1, Math.round(totalHeight * pixelRatio));
             var context = output.getContext('2d');
-            [weatherCanvas, vectorCanvas, labelsCanvas].forEach(function (source) {
-                if (source && source.width === output.width && source.height === output.height) {
-                    context.drawImage(source, 0, 0);
+            if (!context) {
+                return null;
+            }
+            context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+            context.fillStyle = '#073b63';
+            context.fillRect(0, 0, width, headerHeight);
+            context.fillStyle = '#8dd9ef';
+            context.font = '800 11px Inter, Segoe UI, Arial, sans-serif';
+            context.textAlign = 'left';
+            context.fillText('ECMWF IFS DÉTERMINISTE • FRANCE MÉTROPOLITAINE • CEP 0,25°', 16, 22);
+            context.fillStyle = '#ffffff';
+            context.font = '900 24px Inter, Segoe UI, Arial, sans-serif';
+            context.fillText(
+                fitCaptureText(context, mapTitle ? mapTitle.textContent : 'Carte CEP', width * 0.64),
+                16,
+                52
+            );
+            context.textAlign = 'right';
+            context.font = '700 11px Inter, Segoe UI, Arial, sans-serif';
+            context.fillStyle = '#dce9f5';
+            context.fillText(
+                fitCaptureText(context, mapRun ? mapRun.textContent : '', width * 0.32),
+                width - 16,
+                23
+            );
+            context.fillText(
+                fitCaptureText(context, generated ? generated.textContent : '', width * 0.32),
+                width - 16,
+                43
+            );
+            context.textAlign = 'left';
+            context.fillStyle = '#ffffff';
+            context.font = '800 14px Inter, Segoe UI, Arial, sans-serif';
+            context.fillText(
+                fitCaptureText(context, mapDate ? mapDate.textContent : '', width - 32),
+                16,
+                78
+            );
+            context.fillStyle = '#bfe8f4';
+            context.font = '700 11px Inter, Segoe UI, Arial, sans-serif';
+            var locationText = focusedLocation && focusedLocation.label
+                ? 'Zone ciblée : ' + focusedLocation.label + ' • '
+                : '';
+            if (focusedLocation && Number.isFinite(Number(focusedLocation.latitude)) &&
+                    Number.isFinite(Number(focusedLocation.longitude))) {
+                locationText += Number(focusedLocation.latitude).toFixed(4) + '° N • ' +
+                    Number(focusedLocation.longitude).toFixed(4) + '° E • ';
+            }
+            locationText += (validity ? validity.textContent : '') +
+                (lead && lead.textContent ? ' • ' + lead.textContent : '');
+            context.fillText(fitCaptureText(context, locationText, width - 32), 16, 101);
+
+            context.fillStyle = '#a5a6b0';
+            context.fillRect(0, headerHeight, width, height);
+            context.save();
+            context.translate(
+                width / 2 + transform.x,
+                headerHeight + height / 2 + transform.y
+            );
+            context.scale(transform.scale, transform.scale);
+            context.translate(-width / 2, -height / 2);
+            context.imageSmoothingEnabled = true;
+            context.imageSmoothingQuality = 'high';
+            context.drawImage(currentWeatherImage, 0, 0, width, height);
+            context.restore();
+            context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+            [vectorCanvas, labelsCanvas].forEach(function (source) {
+                if (source && source.width && source.height) {
+                    context.drawImage(
+                        source,
+                        0,
+                        0,
+                        source.width,
+                        source.height,
+                        0,
+                        headerHeight,
+                        width,
+                        height
+                    );
                 }
             });
+            context.fillStyle = 'rgba(3, 26, 43, .78)';
+            context.fillRect(12, headerHeight + height - 31, width - 24, 22);
+            context.fillStyle = '#ffffff';
+            context.font = '800 11px Inter, Segoe UI, Arial, sans-serif';
+            context.textAlign = 'center';
+            context.fillText(
+                'www.alertes-meteo.com • Carte CEP/IFS • Module v' + moduleVersion,
+                width / 2,
+                headerHeight + height - 16
+            );
+            drawCaptureLegend(
+                context,
+                manifest && manifest.layers ? manifest.layers[currentLayer] : null,
+                width,
+                headerHeight + height,
+                footerHeight
+            );
             return output;
         }
 
@@ -707,6 +1062,29 @@
                 link.click();
                 document.body.removeChild(link);
                 window.setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+                setToolHint('PNG téléchargé avec succès.');
+            }, 'image/png');
+        }
+
+        function copyImage() {
+            var canvas = composeCaptureCanvas();
+            if (!canvas || !canvas.toBlob || !navigator.clipboard ||
+                    typeof navigator.clipboard.write !== 'function' ||
+                    typeof window.ClipboardItem !== 'function') {
+                setToolHint('Copie directe indisponible : utilisez Télécharger PNG.');
+                return;
+            }
+            canvas.toBlob(function (blob) {
+                if (!blob) {
+                    setToolHint('Impossible de préparer l’image.');
+                    return;
+                }
+                var item = new window.ClipboardItem({ 'image/png': blob });
+                navigator.clipboard.write([item]).then(function () {
+                    setToolHint('Image copiée : vous pouvez maintenant la coller.');
+                }).catch(function () {
+                    setToolHint('Copie refusée par le navigateur : utilisez Télécharger PNG.');
+                });
             }, 'image/png');
         }
 
@@ -943,6 +1321,20 @@
         function setMenuOpen(open) {
             layerMenu.hidden = !open;
             menuToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (menuClose) {
+                menuClose.hidden = false;
+                menuClose.setAttribute('aria-expanded', open ? 'true' : 'false');
+                menuClose.setAttribute(
+                    'aria-label',
+                    open ? 'Replier le menu des cartes' : 'Déplier le menu des cartes'
+                );
+            }
+            if (menuCloseLabel) {
+                menuCloseLabel.textContent = open ? 'Replier' : 'Déplier';
+            }
+            if (menuCloseIcon) {
+                menuCloseIcon.textContent = open ? '⌃' : '⌄';
+            }
             app.classList.toggle('is-layer-menu-open', open);
         }
 
@@ -962,9 +1354,7 @@
                 'Précipitations',
                 'Vent',
                 'Nuages et humidité',
-                'Pression et géopotentiel',
-                'Instabilité',
-                'Relief',
+                'Pression, instabilité et relief',
                 'Autres'
             ];
             var grouped = {};
@@ -1047,10 +1437,182 @@
             });
         }
 
+        function isPeriodLayer() {
+            var layer = manifest && manifest.layers[currentLayer];
+            return Boolean(layer && layer.range_mode);
+        }
+
+        function periodDateLabel(step) {
+            return validityFormat.format(new Date(step.valid_time)).replace(':', 'h');
+        }
+
+        function updatePeriodControls() {
+            var steps = availableSteps();
+            if (!steps.length || !periodStartSlider || !periodEndSlider) {
+                return;
+            }
+            periodStart = clamp(periodStart, 0, Math.max(0, steps.length - 2));
+            periodEnd = clamp(periodEnd, periodStart + 1, steps.length - 1);
+            periodStartSlider.max = String(steps.length - 1);
+            periodEndSlider.max = String(steps.length - 1);
+            periodStartSlider.value = String(periodStart);
+            periodEndSlider.value = String(periodEnd);
+            if (periodStartLabel) {
+                periodStartLabel.textContent = periodDateLabel(steps[periodStart]);
+            }
+            if (periodEndLabel) {
+                periodEndLabel.textContent = periodDateLabel(steps[periodEnd]);
+            }
+            var startLead = Number(steps[periodStart].lead_hour) || 0;
+            var endLead = Number(steps[periodEnd].lead_hour) || 0;
+            if (periodSummary) {
+                periodSummary.textContent = 'H+' + startLead + ' → H+' + endLead +
+                    ' • ' + Math.max(0, endLead - startLead) + ' h';
+            }
+            if (dualRange && dualRange.style && dualRange.style.setProperty) {
+                var maximum = Math.max(1, steps.length - 1);
+                dualRange.style.setProperty(
+                    '--cepm-period-start', (periodStart / maximum * 100) + '%'
+                );
+                dualRange.style.setProperty(
+                    '--cepm-period-end', (periodEnd / maximum * 100) + '%'
+                );
+            }
+        }
+
+        function configureTimeline() {
+            var ranged = isPeriodLayer();
+            if (singleTimeline) {
+                singleTimeline.hidden = ranged;
+            }
+            if (timeline) {
+                timeline.hidden = ranged;
+            }
+            if (periodSelector) {
+                periodSelector.hidden = !ranged;
+            }
+            playButton.hidden = ranged || !animationEnabled || reducedMotion;
+            if (!ranged) {
+                return;
+            }
+            stopAnimation();
+            var steps = availableSteps();
+            if (steps.length < 2) {
+                return;
+            }
+            if (periodEnd <= periodStart || periodEnd >= steps.length) {
+                periodStart = 0;
+                periodEnd = Math.min(8, steps.length - 1);
+            }
+            var layer = manifest.layers[currentLayer];
+            if (periodTitle) {
+                periodTitle.textContent = layer.range_mode === 'maximum'
+                    ? 'Période des rafales maximales'
+                    : 'Période du cumul de précipitations';
+            }
+            updatePeriodControls();
+        }
+
+        function schedulePeriodRender() {
+            if (periodTimer !== null) {
+                window.clearTimeout(periodTimer);
+            }
+            periodTimer = window.setTimeout(function () {
+                periodTimer = null;
+                renderPeriod();
+            }, 180);
+        }
+
+        function mapLayerTitle(layer, step, sourceKey) {
+            var title = (layer ? layer.label : 'Carte CEP') +
+                (layer && layer.unit ? ' (' + layer.unit + ')' : '');
+            var vectorKey = sourceKey || currentLayer;
+            if (step && step.vectors &&
+                    (step.vectors[currentLayer] || step.vectors[vectorKey])) {
+                title += ' • isobares 4 hPa';
+            }
+            return title;
+        }
+
+        function renderPeriod() {
+            var steps = availableSteps();
+            var layer = manifest.layers[currentLayer];
+            if (!layer || !layer.range_mode || steps.length < 2) {
+                showError('Cette période ne peut pas encore être calculée.');
+                return;
+            }
+            updatePeriodControls();
+            currentStep = periodEnd;
+            var startStep = steps[periodStart];
+            var endStep = steps[periodEnd];
+            var startDate = new Date(startStep.valid_time);
+            var endDate = new Date(endStep.valid_time);
+            var periodText = periodDateLabel(startStep) + ' au ' +
+                periodDateLabel(endStep);
+            validity.textContent = periodText;
+            lead.textContent = 'H+' + startStep.lead_hour + ' → H+' + endStep.lead_hour;
+            previousButton.disabled = periodEnd <= 1;
+            nextButton.disabled = periodEnd >= steps.length - 1;
+            viewport.setAttribute('aria-label', layer.label + ' — ' + periodText);
+            var sourceKey = layer.source_key || currentLayer;
+            mapTitle.textContent = mapLayerTitle(layer, endStep, sourceKey);
+            mapDate.textContent = 'Du ' +
+                mapDateFormat.format(startDate).replace(':', 'h') + ' au ' +
+                mapDateFormat.format(endDate).replace(':', 'h');
+
+            clearError();
+            loading.textContent = 'Calcul de la période…';
+            loading.hidden = false;
+            currentWeatherImage = null;
+            currentProbe = null;
+            samplerReady = false;
+            hideProbe();
+            probeLoadToken += 1;
+            var token = ++loadToken;
+            var selectedSteps = layer.range_mode === 'difference'
+                ? [startStep, endStep]
+                : steps.slice(periodStart, periodEnd + 1);
+            loadWeatherVectorOverlay(
+                endStep.vectors && (endStep.vectors[currentLayer] ||
+                    endStep.vectors[sourceKey])
+                    ? (endStep.vectors[currentLayer] || endStep.vectors[sourceKey])
+                    : null
+            );
+            fetchProbeSeries(selectedSteps, sourceKey, function (done, total) {
+                if (token === loadToken) {
+                    loading.textContent = 'Calcul de la période ' + done + '/' + total + '…';
+                }
+            }).then(function (grids) {
+                if (token !== loadToken) {
+                    return;
+                }
+                var combined = combinePeriodGrids(grids, layer.range_mode);
+                var image = renderProbeGrid(combined, layer);
+                currentProbe = combined;
+                uploadWeatherImage(image);
+                prepareImageSampler(image);
+                loading.textContent = 'Chargement de la carte…';
+                loading.hidden = true;
+            }).catch(function (error) {
+                if (token === loadToken) {
+                    showError('Calcul de la période impossible : ' + error.message);
+                }
+            });
+        }
+
         function renderStep(index) {
             var steps = availableSteps();
             if (!steps.length) {
                 showError('Aucune carte disponible pour ce paramètre.');
+                return;
+            }
+            if (isPeriodLayer()) {
+                periodEnd = clamp(index, 1, steps.length - 1);
+                if (periodStart >= periodEnd) {
+                    periodStart = Math.max(0, periodEnd - 1);
+                }
+                updatePeriodControls();
+                renderPeriod();
                 return;
             }
             currentStep = clamp(index, 0, steps.length - 1);
@@ -1068,12 +1630,12 @@
                 'aria-label',
                 (layer ? layer.label : 'Carte météo') + ' — ' + validity.textContent
             );
-            mapTitle.textContent = (layer ? layer.label : 'Carte CEP') +
-                (layer && layer.unit ? ' (' + layer.unit + ')' : '');
+            mapTitle.textContent = mapLayerTitle(layer, step, currentLayer);
             mapDate.textContent = mapDateFormat.format(date).replace(':', 'h') +
                 ' (+' + step.lead_hour + 'h)';
 
             clearError();
+            loading.textContent = 'Chargement de la carte…';
             loading.hidden = false;
             currentWeatherImage = null;
             samplerReady = false;
@@ -1109,12 +1671,21 @@
             if (!manifest.layers[layer]) {
                 return;
             }
+            if (periodTimer !== null) {
+                window.clearTimeout(periodTimer);
+                periodTimer = null;
+            }
             currentLayer = layer;
             refreshLayerMenu();
             buildLegend();
             var steps = availableSteps();
             currentStep = clamp(currentStep, 0, Math.max(0, steps.length - 1));
-            renderStep(currentStep);
+            configureTimeline();
+            if (isPeriodLayer()) {
+                renderPeriod();
+            } else {
+                renderStep(currentStep);
+            }
         }
 
         function stopAnimation() {
@@ -1129,6 +1700,9 @@
         }
 
         function toggleAnimation() {
+            if (isPeriodLayer()) {
+                return;
+            }
             if (timer !== null) {
                 stopAnimation();
                 return;
@@ -1336,6 +1910,41 @@
                 }
                 var paths = Array.from(svg.querySelectorAll('path')).map(
                     function (node) {
+                        var role = node.getAttribute('data-cepm-role') || '';
+                        var arrowPoints = [];
+                        var isobarLabels = [];
+                        if (role === 'wind-arrows') {
+                            arrowPoints = String(
+                                node.getAttribute('data-cepm-points') || ''
+                            ).split(';').map(function (point) {
+                                var values = point.split(',').map(Number);
+                                if (values.length !== 5 || values.some(function (value) {
+                                    return !Number.isFinite(value);
+                                })) {
+                                    return null;
+                                }
+                                return {
+                                    x: values[0],
+                                    y: values[1],
+                                    dx: values[2],
+                                    dy: values[3],
+                                    speed: values[4]
+                                };
+                            }).filter(Boolean);
+                        }
+                        if (role === 'isobar-labels') {
+                            isobarLabels = String(
+                                node.getAttribute('data-cepm-labels') || ''
+                            ).split(';').map(function (label) {
+                                var values = label.split(',').map(Number);
+                                if (values.length !== 3 || values.some(function (value) {
+                                    return !Number.isFinite(value);
+                                })) {
+                                    return null;
+                                }
+                                return { x: values[0], y: values[1], value: values[2] };
+                            }).filter(Boolean);
+                        }
                         return {
                             path: new Path2D(node.getAttribute('d') || ''),
                             colour: node.getAttribute('stroke') || '#101116',
@@ -1344,14 +1953,23 @@
                             lineCap: node.getAttribute('stroke-linecap') || 'butt',
                             lineJoin: node.getAttribute('stroke-linejoin') || 'miter',
                             hideAtDeepZoom:
-                                node.getAttribute('data-cepm-hide-deep') === '1'
+                                node.getAttribute('data-cepm-hide-deep') === '1',
+                            role: role,
+                            arrowPoints: arrowPoints,
+                            isobarLabels: isobarLabels
                         };
                     }
                 );
                 return {
                     width: viewBox[2],
                     height: viewBox[3],
-                    paths: paths
+                    paths: paths,
+                    windArrows: paths.reduce(function (all, entry) {
+                        return all.concat(entry.arrowPoints);
+                    }, []),
+                    isobarLabels: paths.reduce(function (all, entry) {
+                        return all.concat(entry.isobarLabels);
+                    }, [])
                 };
         }
 
@@ -1386,6 +2004,120 @@
             });
         }
 
+        function drawScreenWindArrows(
+            arrows,
+            horizontalScale,
+            verticalScale,
+            offsetX,
+            offsetY,
+            width,
+            height,
+            pixelRatio
+        ) {
+            if (!arrows.length) { return; }
+            vectorContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+            var arrowHeads = [];
+            vectorContext.beginPath();
+            arrows.forEach(function (arrow) {
+                var centreX = offsetX + arrow.x * horizontalScale;
+                var centreY = offsetY + arrow.y * verticalScale;
+                if (centreX < -35 || centreX > width + 35 ||
+                        centreY < -35 || centreY > height + 35) {
+                    return;
+                }
+                var screenDx = arrow.dx * horizontalScale;
+                var screenDy = arrow.dy * verticalScale;
+                var magnitude = Math.hypot(screenDx, screenDy);
+                if (!magnitude) { return; }
+                screenDx /= magnitude;
+                screenDy /= magnitude;
+                var length = clamp(17 + arrow.speed * 0.08, 18, 25);
+                var head = clamp(length * 0.29, 5.2, 6.8);
+                var normalX = -screenDy;
+                var normalY = screenDx;
+                var startX = centreX - screenDx * length / 2;
+                var startY = centreY - screenDy * length / 2;
+                var endX = centreX + screenDx * length / 2;
+                var endY = centreY + screenDy * length / 2;
+                var shaftX = endX - screenDx * head * 0.52;
+                var shaftY = endY - screenDy * head * 0.52;
+                var leftX = endX - screenDx * head + normalX * head * 0.48;
+                var leftY = endY - screenDy * head + normalY * head * 0.48;
+                var rightX = endX - screenDx * head - normalX * head * 0.48;
+                var rightY = endY - screenDy * head - normalY * head * 0.48;
+                vectorContext.moveTo(startX, startY);
+                vectorContext.lineTo(shaftX, shaftY);
+                arrowHeads.push({
+                    tipX: endX,
+                    tipY: endY,
+                    leftX: leftX,
+                    leftY: leftY,
+                    rightX: rightX,
+                    rightY: rightY
+                });
+            });
+            vectorContext.lineCap = 'round';
+            vectorContext.lineJoin = 'round';
+            vectorContext.globalAlpha = 0.98;
+            vectorContext.strokeStyle = '#f7fbfd';
+            vectorContext.lineWidth = 4.8;
+            vectorContext.stroke();
+            vectorContext.globalAlpha = 0.99;
+            vectorContext.strokeStyle = '#061b28';
+            vectorContext.lineWidth = 1.6;
+            vectorContext.stroke();
+
+            vectorContext.beginPath();
+            arrowHeads.forEach(function (head) {
+                vectorContext.moveTo(head.tipX, head.tipY);
+                vectorContext.lineTo(head.leftX, head.leftY);
+                vectorContext.lineTo(head.rightX, head.rightY);
+                vectorContext.closePath();
+            });
+            vectorContext.globalAlpha = 0.98;
+            vectorContext.strokeStyle = '#f7fbfd';
+            vectorContext.lineWidth = 3.6;
+            vectorContext.stroke();
+            vectorContext.fillStyle = '#061b28';
+            vectorContext.fill();
+            vectorContext.strokeStyle = '#061b28';
+            vectorContext.lineWidth = 0.9;
+            vectorContext.stroke();
+        }
+
+        function drawScreenIsobarLabels(
+            labels,
+            horizontalScale,
+            verticalScale,
+            offsetX,
+            offsetY,
+            width,
+            height,
+            pixelRatio
+        ) {
+            if (!labels.length) { return; }
+            vectorContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+            vectorContext.font = '700 11px Inter, "Segoe UI", Arial, sans-serif';
+            vectorContext.textAlign = 'center';
+            vectorContext.textBaseline = 'middle';
+            vectorContext.lineJoin = 'round';
+            labels.forEach(function (label) {
+                var x = offsetX + label.x * horizontalScale;
+                var y = offsetY + label.y * verticalScale;
+                if (x < 24 || x > width - 24 || y < 18 || y > height - 18) {
+                    return;
+                }
+                var text = String(Math.round(label.value));
+                vectorContext.globalAlpha = 0.94;
+                vectorContext.strokeStyle = '#f5fafc';
+                vectorContext.lineWidth = 4.5;
+                vectorContext.strokeText(text, x, y);
+                vectorContext.globalAlpha = 0.9;
+                vectorContext.fillStyle = '#132934';
+                vectorContext.fillText(text, x, y);
+            });
+        }
+
         function drawVectors(width, height, pixelRatio) {
             if (!vectorContext) {
                 return;
@@ -1393,6 +2125,8 @@
             resizeCanvas(vectorCanvas, width, height, pixelRatio);
             vectorContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
             vectorContext.clearRect(0, 0, width, height);
+            var screenArrowLayers = [];
+            var screenIsobarLayers = [];
             [weatherVectorDefinition, baseVectorDefinition].forEach(function (definition) {
                 if (!definition) { return; }
                 var horizontalScale = transform.scale * width / definition.width;
@@ -1411,6 +2145,12 @@
                     if (entry.hideAtDeepZoom && transform.scale > 3.2) {
                         return;
                     }
+                    if (entry.role === 'wind-arrows' ||
+                            entry.role === 'isobar-labels' ||
+                            (definition.windArrows.length &&
+                            entry.role === 'wind-arrow-fallback')) {
+                        return;
+                    }
                     vectorContext.strokeStyle = entry.colour;
                     vectorContext.globalAlpha = entry.opacity;
                     vectorContext.lineCap = entry.lineCap;
@@ -1418,6 +2158,48 @@
                     vectorContext.lineWidth = entry.width / horizontalScale;
                     vectorContext.stroke(entry.path);
                 });
+                if (definition.windArrows.length) {
+                    screenArrowLayers.push({
+                        arrows: definition.windArrows,
+                        horizontalScale: horizontalScale,
+                        verticalScale: verticalScale,
+                        offsetX: offsetX,
+                        offsetY: offsetY
+                    });
+                }
+                if (definition.isobarLabels.length) {
+                    screenIsobarLayers.push({
+                        labels: definition.isobarLabels,
+                        horizontalScale: horizontalScale,
+                        verticalScale: verticalScale,
+                        offsetX: offsetX,
+                        offsetY: offsetY
+                    });
+                }
+            });
+            screenArrowLayers.forEach(function (layer) {
+                drawScreenWindArrows(
+                    layer.arrows,
+                    layer.horizontalScale,
+                    layer.verticalScale,
+                    layer.offsetX,
+                    layer.offsetY,
+                    width,
+                    height,
+                    pixelRatio
+                );
+            });
+            screenIsobarLayers.forEach(function (layer) {
+                drawScreenIsobarLabels(
+                    layer.labels,
+                    layer.horizontalScale,
+                    layer.verticalScale,
+                    layer.offsetX,
+                    layer.offsetY,
+                    width,
+                    height,
+                    pixelRatio
+                );
             });
             vectorContext.globalAlpha = 1;
         }
@@ -1694,6 +2476,7 @@
         }
 
         app.addEventListener('cepm:focus-location', function (event) {
+            focusedLocation = event.detail || null;
             focusLocation(event.detail);
         });
 
@@ -1701,8 +2484,11 @@
             setMenuOpen(layerMenu.hidden);
         });
         menuClose.addEventListener('click', function () {
-            setMenuOpen(false);
-            menuToggle.focus();
+            var opening = layerMenu.hidden;
+            setMenuOpen(opening);
+            if (!opening) {
+                menuToggle.focus();
+            }
         });
         app.addEventListener('keydown', function (event) {
             if (event.key === 'Escape' && !layerMenu.hidden) {
@@ -1723,6 +2509,26 @@
             stopAnimation();
             renderStep(Number(slider.value));
         });
+        if (periodStartSlider) {
+            periodStartSlider.addEventListener('input', function () {
+                stopAnimation();
+                periodStart = Math.min(
+                    Number(periodStartSlider.value), periodEnd - 1
+                );
+                updatePeriodControls();
+                schedulePeriodRender();
+            });
+        }
+        if (periodEndSlider) {
+            periodEndSlider.addEventListener('input', function () {
+                stopAnimation();
+                periodEnd = Math.max(
+                    Number(periodEndSlider.value), periodStart + 1
+                );
+                updatePeriodControls();
+                schedulePeriodRender();
+            });
+        }
         zoomIn.addEventListener('click', function () {
             changeZoom(transform.scale * 1.5);
         });
@@ -1748,14 +2554,8 @@
         if (captureButton) {
             captureButton.addEventListener('click', captureImage);
         }
-        if (pinButton) {
-            pinButton.addEventListener('click', function () {
-                pinnedEnabled = !pinnedEnabled;
-                pinButton.setAttribute('aria-pressed', pinnedEnabled ? 'true' : 'false');
-                if (!pinnedEnabled) {
-                    clearPinned();
-                }
-            });
+        if (copyButton) {
+            copyButton.addEventListener('click', copyImage);
         }
         if (diagramClose) {
             diagramClose.addEventListener('click', closeDiagram);
@@ -1928,7 +2728,11 @@
         }
         webgl = initialiseWebgl();
 
-        fetchJson(baseUrl + '/maps/index.json')
+        fetchJson(
+            baseUrl + '/maps/index.json?module=' +
+            encodeURIComponent(moduleVersion) + '&minute=' +
+            Math.floor(Date.now() / 60000)
+        )
             .then(function (payload) {
                 if (!payload || payload.status !== 'ok' ||
                         !payload.layers || !Array.isArray(payload.steps)) {
@@ -1937,6 +2741,7 @@
                 manifest = payload;
                 buildLayerMenu();
                 buildLegend();
+                configureTimeline();
                 loadVectorOverlay(payload.overlay);
                 loadPlaces();
 

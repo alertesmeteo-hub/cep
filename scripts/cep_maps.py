@@ -23,8 +23,8 @@ from PIL import Image
 from scipy.spatial import cKDTree
 
 
-MAP_SCHEMA_VERSION = 10
-MODULE_VERSION = "1.5.1"
+MAP_SCHEMA_VERSION = 11
+MODULE_VERSION = "1.5.2"
 # Une valeur numérique tous les deux pixels cartographiques : le survol reste
 # précis à l'échelle d'une commune sans multiplier déraisonnablement le poids
 # de la branche de données.
@@ -1122,6 +1122,35 @@ class CEPMapRenderer:
             return -1.0
         return abs(value - round(value / interval) * interval)
 
+    @staticmethod
+    def _isobar_clearance(
+        pressure: np.ndarray,
+        x: int,
+        y: int,
+        interval: float,
+        radius: int = 15,
+    ) -> float:
+        """Distance minimale à une isobare autour de tout le symbole.
+
+        Contrôler uniquement la pression au centre laisse l'axe ou la pointe
+        d'une flèche couper une isobare. La zone complète occupée à l'écran est
+        donc testée avant de conserver la position.
+        """
+
+        if interval <= 0:
+            return -1.0
+        height, width = pressure.shape
+        left = max(0, x - radius)
+        right = min(width, x + radius + 1)
+        top = max(0, y - radius)
+        bottom = min(height, y + radius + 1)
+        patch = np.asarray(pressure[top:bottom, left:right], dtype=np.float32)
+        finite = patch[np.isfinite(patch)]
+        if not finite.size:
+            return -1.0
+        distances = np.abs(finite - np.rint(finite / interval) * interval)
+        return float(np.nanmin(distances))
+
     def _wind_arrow_paths(
         self,
         u_wind: np.ndarray,
@@ -1145,6 +1174,8 @@ class CEPMapRenderer:
             (0, -spacing // 4),
             (spacing // 5, spacing // 5),
             (-spacing // 5, spacing // 5),
+            (spacing // 5, -spacing // 5),
+            (-spacing // 5, -spacing // 5),
         )
         for y in range(spacing // 2, self.height, spacing):
             for x in range(spacing // 2, self.width, spacing):
@@ -1159,18 +1190,20 @@ class CEPMapRenderer:
                             and 0 <= candidate_y < self.height
                         ):
                             continue
-                        pressure_value = float(
-                            pressure[candidate_y, candidate_x]
-                        )
                         candidates.append((
-                            self._distance_to_isobar(
-                                pressure_value, isobar_interval
+                            self._isobar_clearance(
+                                pressure,
+                                candidate_x,
+                                candidate_y,
+                                isobar_interval,
                             ),
                             candidate_x,
                             candidate_y,
                         ))
                     if candidates:
-                        _score, arrow_x, arrow_y = max(candidates)
+                        score, arrow_x, arrow_y = max(candidates)
+                        if score < 0.62:
+                            continue
 
                 u_value = float(u_wind[arrow_y, arrow_x])
                 v_value = float(v_wind[arrow_y, arrow_x])
@@ -1245,7 +1278,7 @@ class CEPMapRenderer:
             f'{self.height}" preserveAspectRatio="none" '
             'shape-rendering="geometricPrecision">\n'
             f'<path d="{isobar_path}" fill="none" stroke="#172b39" '
-            'stroke-opacity="0.66" stroke-width="0.9" '
+            'stroke-opacity="0.8" stroke-width="1.05" '
             'stroke-linejoin="round" stroke-linecap="round" '
             'data-cepm-role="isobars" data-cepm-interval="4"/>\n'
             f'<path d="" fill="none" stroke="none" '
@@ -1266,7 +1299,7 @@ class CEPMapRenderer:
         )
         destination.write_text(svg, encoding="utf-8")
 
-    def _pixel(self, latitude: float, longitude: float) -> tuple[int, int]:
+    def _pixel(self, latitude: float, longitude: float) -> tuple[float, float]:
         west = float(self.bounds["west"])
         east = float(self.bounds["east"])
         north_y = float(_mercator(float(self.bounds["north"])))
@@ -1274,7 +1307,9 @@ class CEPMapRenderer:
         x = (longitude - west) / (east - west) * (self.width - 1)
         y = (north_y - float(_mercator(latitude))) / (north_y - south_y)
         y *= self.height - 1
-        return int(round(x)), int(round(y))
+        # Conserver les sous-pixels est essentiel : un arrondi entier produit
+        # des escaliers très visibles sur les limites départementales au zoom.
+        return float(x), float(y)
 
     def _shapefile_svg_path(self, path: Path) -> str:
         if not path.is_file():

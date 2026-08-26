@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Aperçu compact CEP v1.5.2</title>
+  <link rel="stylesheet" href="../wordpress/cep-ecmwf-france/assets/cep-meteo.css">
+  <link rel="stylesheet" href="../wordpress/cep-ecmwf-france/assets/cep-map.css">
+  <style>body{margin:0;padding:18px;background:#eef3f7;font-family:Inter,"Segoe UI",Arial,sans-serif}.preview{max-width:1480px;margin:auto}</style>
+</head>
+<body>
+<main class="preview">
+  <section class="cep-card cep-national">
+    <header class="cep-header">
+      <div>
+        <p class="cep-kicker">MODÈLE DÉTERMINISTE • FRANCE MÉTROPOLITAINE</p>
+        <h2>Prévisions CEP — Perpignan</h2>
+        <div class="cep-header-details"><p class="cep-city-altitude">Altitude de Perpignan : ≈ 6 m (point de grille CEP)</p><p class="cep-meta">Run du 25/08/2026 14h00 • résolution 28,0 km • diagnostics orages + neige CEP</p></div>
+      </div>
+      <div class="cep-badge"><span>CEP</span><strong>0,25°</strong></div>
+    </header>
+    <div class="cep-toolbar">
+      <div class="cep-search">
+        <div class="cep-search-mainline">
+          <label for="city">Choisissez votre commune</label>
+          <div class="cep-search-control"><span class="cep-search-icon">⌕</span><input id="city" class="cep-city-input" value="Perpignan"></div>
+          <button class="cep-locate-button">📍 Détecter ma ville</button>
+          <p class="cep-search-status">Prévisions affichées pour Perpignan (66000).</p>
+        </div>
+      </div>
+      <div class="cep-coverage"><strong>34 746 communes</strong><span>Métropole et Corse</span></div>
+    </div>
+  </section>
+
+  <section class="cep-card cepm-card">
+    <div class="cepm-toolbar">
+      <div class="cepm-field cepm-layer-picker"><span>Paramètre</span><button class="cepm-layer-trigger"><span>Température à 2 m</span></button></div>
+      <div class="cepm-tools"><button class="cepm-tool-toggle">🔍 Zoom interactif</button><button class="cepm-tool-toggle">📈 Diagramme</button></div>
+      <div class="cepm-time-controls"><button>◀</button><button>▶</button><button>▶</button></div>
+      <div class="cepm-validity-actions"><button class="cepm-menu-close" aria-expanded="true"><span>Replier</span><span class="cepm-menu-close-icon">⌃</span></button><div class="cepm-validity"><span>Prévision valable</span><strong>mer. 26/08 08h00</strong><small>H+18</small></div></div>
+    </div>
+    <div class="cepm-period-selector">
+      <div class="cepm-period-head"><div><strong>Période du cumul de précipitations</strong><small>Déplacez les deux curseurs pour choisir précisément le début et la fin.</small></div><span>H+6 → H+30 • 24 h</span></div>
+      <div class="cepm-dual-range" style="--cepm-period-start:15%;--cepm-period-end:65%"><div class="cepm-dual-range-track"></div><input type="range" min="0" max="10" value="2"><input type="range" min="0" max="10" value="7"></div>
+      <div class="cepm-period-values"><span><small>Du</small><strong>mer. 26/08 02h</strong></span><span><small>Au</small><strong>jeu. 27/08 02h</strong></span></div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

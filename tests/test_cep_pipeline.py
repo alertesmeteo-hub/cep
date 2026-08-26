@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import re
 from pathlib import Path
 from unittest.mock import patch
 from datetime import datetime, timezone
@@ -140,6 +141,12 @@ class CEPGridTests(unittest.TestCase):
         self.assertIn('data-cepm-quality="precise"', overlay)
         self.assertIn('data-cepm-hide-deep="0"', overlay)
         self.assertGreater(overlay.count("M"), 100)
+        department_path = re.search(
+            r'<path d="([^"]+)"[^>]+data-cepm-layer="departments"',
+            overlay,
+        )
+        self.assertIsNotNone(department_path)
+        self.assertRegex(department_path.group(1), r'\d+\.[1-9]')
 
     def test_wind_overlay_uses_pressure_isobars_and_screen_arrows(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -168,6 +175,18 @@ class CEPGridTests(unittest.TestCase):
         self.assertIn('data-cepm-labels="', overlay)
         self.assertIn('data-cepm-role="wind-arrows"', overlay)
         self.assertIn('data-cepm-points="', overlay)
+        arrow_points = overlay.split('data-cepm-points="', 1)[1].split('"', 1)[0]
+        parsed_points = [
+            tuple(float(value) for value in point.split(","))
+            for point in arrow_points.split(";")
+            if point
+        ]
+        self.assertGreater(len(parsed_points), 0)
+        for x, y, _dx, _dy, _speed in parsed_points:
+            self.assertGreaterEqual(
+                renderer._isobar_clearance(pressure, int(x), int(y), 4.0),
+                0.62,
+            )
 
     def test_period_layers_reuse_numeric_maps_without_duplication(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
