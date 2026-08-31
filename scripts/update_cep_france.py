@@ -37,13 +37,13 @@ from cep_maps import DEFAULT_BOUNDS, CEPMapRenderer
 
 
 LOGGER = logging.getLogger("cep.france")
-PIPELINE_VERSION = "1.6.0"
+PIPELINE_VERSION = "1.6.1"
 DATASET_PAGE = "https://www.ecmwf.int/en/forecasts/datasets/open-data"
 DEFAULT_CURRENT_METADATA_URL = (
     "https://raw.githubusercontent.com/alertesmeteo-hub/"
     "cep/data/index.json"
 )
-USER_AGENT = "alertes-meteo.com/cep-ecmwf-france/1.6.0"
+USER_AGENT = "alertes-meteo.com/cep-ecmwf-france/1.6.1"
 
 # Grille mondiale régulière IFS Open Data 0,25°.
 CEP_NI = 1440
@@ -245,6 +245,22 @@ def grid_index(latitude: float, longitude: float) -> tuple[int, float, float]:
     return index, model_latitude, model_longitude
 
 
+def rain_nearby_points(latitude: float, longitude: float) -> dict[int, tuple[float, float]]:
+    """Nœuds réels de la grille 0,25° à 10 km maximum, même hors département."""
+    _index, center_lat, center_lon = grid_index(latitude, longitude)
+    result = {}
+    for dy in (-0.25, 0.0, 0.25):
+        for dx in (-0.25, 0.0, 0.25):
+            index, lat, lon = grid_index(center_lat + dy, center_lon + dx)
+            dlat = math.radians(lat - latitude)
+            dlon = math.radians(lon - longitude)
+            a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(latitude)) * math.cos(math.radians(lat)) * math.sin(dlon / 2) ** 2
+            distance = 6371.0088 * 2 * math.asin(min(1.0, math.sqrt(a)))
+            if distance <= 10.0 + 1e-7:
+                result[index] = (lat, lon)
+    return result
+
+
 def load_catalog(path: Path) -> NationalCatalog:
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
@@ -254,6 +270,7 @@ def load_catalog(path: Path) -> NationalCatalog:
 
     mapped: list[tuple[list[Any], int, float, float]] = []
     point_coordinates: dict[int, tuple[float, float]] = {}
+    rain_department_points: dict[str, set[int]] = defaultdict(set)
     for commune in raw_communes:
         if not isinstance(commune, list) or len(commune) < 7:
             raise RuntimeError("Entrée communale invalide dans le catalogue")
@@ -264,6 +281,9 @@ def load_catalog(path: Path) -> NationalCatalog:
         )
         mapped.append((commune, model_index, model_latitude, model_longitude))
         point_coordinates[model_index] = (model_latitude, model_longitude)
+        neighbors = rain_nearby_points(latitude, longitude)
+        point_coordinates.update(neighbors)
+        rain_department_points[str(commune[2]).upper()].update(neighbors)
 
     model_indexes = sorted(point_coordinates)
     global_identifier = {
@@ -284,6 +304,10 @@ def load_catalog(path: Path) -> NationalCatalog:
         department_votes[global_id][department] += 1
         by_department[department].append((commune, global_id))
 
+    for department, indexes in rain_department_points.items():
+        for index in indexes:
+            department_votes[global_identifier[index]][department] += 1
+
     point_departments = [
         department_votes[position].most_common(1)[0][0]
         if department_votes[position]
@@ -293,7 +317,8 @@ def load_catalog(path: Path) -> NationalCatalog:
 
     departments: dict[str, DepartmentData] = {}
     for department, entries in sorted(by_department.items()):
-        global_ids = sorted({global_id for _commune, global_id in entries})
+        global_ids = sorted({global_id for _commune, global_id in entries} |
+                            {global_identifier[index] for index in rain_department_points[department]})
         local_identifier = {
             global_id: position for position, global_id in enumerate(global_ids)
         }
@@ -1000,6 +1025,7 @@ def write_departments(
             output.write("{")
             output.write('"schema_version":4,"status":"ok","generated_at":')
             json.dump(generated_at, output)
+            output.write(',"rain_radius_km":10')
             output.write(',"department":')
             json.dump(code, output)
             output.write(',"columns":')
