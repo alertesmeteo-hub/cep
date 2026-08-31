@@ -69,6 +69,7 @@ jobs:
           department = json.loads((root / "departements/66.json").read_text(encoding="utf-8"))
           run = datetime.fromisoformat(index["model"]["run_time"].replace("Z", "+00:00"))
           end = datetime.fromisoformat(department["forecast"][-1][0].replace("Z", "+00:00"))
+          assert department["rain_radius_km"] == 10
           assert end == run + timedelta(hours=360)
           assert len(department["forecast"]) == 85
           print(
