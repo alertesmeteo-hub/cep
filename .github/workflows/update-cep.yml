@@ -38,7 +38,7 @@ jobs:
           python scripts/update_cep_france.py \
             --catalog config/communes-france.json \
             --output-dir build/national \
-            --forecast-hours 240 \
+            --forecast-hours 360 \
             --current-metadata-url \
             "https://raw.githubusercontent.com/${{ github.repository }}/data/index.json"
           if test -f build/national/index.json; then
@@ -64,6 +64,13 @@ jobs:
           assert len(maps["layers"]) >= 8
           assert len(maps["steps"]) == 65
           assert (root / "departements/66.json").is_file()
+          assert index["model"]["forecast_hours_requested"] == 360
+          from datetime import datetime, timedelta
+          department = json.loads((root / "departements/66.json").read_text(encoding="utf-8"))
+          run = datetime.fromisoformat(index["model"]["run_time"].replace("Z", "+00:00"))
+          end = datetime.fromisoformat(department["forecast"][-1][0].replace("Z", "+00:00"))
+          assert end == run + timedelta(hours=360)
+          assert len(department["forecast"]) == 85
           print(
               f"Validation OK : {len(maps['layers'])} cartes, "
               f"{len(maps['steps'])} échéances, "
