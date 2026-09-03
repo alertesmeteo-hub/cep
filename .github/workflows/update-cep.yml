@@ -3,9 +3,11 @@ name: Mise à jour CEP France
 on:
   workflow_dispatch:
   schedule:
-    # Une production quotidienne vers 10 h en France :
-    # 10 h 30 en heure d'été, 9 h 30 en heure d'hiver.
-    - cron: "30 8 * * *"
+    # Vérification horaire des deux fenêtres de disponibilité IFS. GitHub
+    # Actions utilise UTC : 05-10 couvre 07-11 en France selon la saison,
+    # et 16-22 couvre 18-23. Le script quitte immédiatement si le run le
+    # plus récent est déjà publié, sans reconstruire ni pousser data.
+    - cron: "0 5-10,16-22 * * *"
 
 permissions:
   contents: write
