@@ -3,7 +3,7 @@ Contributors: alertesmeteo
 Tags: meteo, cep, ecmwf, ifs, carte, previsions, avada
 Requires at least: 5.8
 Requires PHP: 7.4
-Stable tag: 1.5.2
+Stable tag: 1.5.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,6 +31,13 @@ Les données proviennent directement d'ECMWF Open Data, modèle IFS déterminist
 Exemple : [cep_meteo code="75056" departement="75" ville="Paris" heures="240"]
 
 == Changelog ==
+
+= 1.5.4 — 03/09/2026 =
+* Ajout des températures à 850 et 500 hPa et de la température de surface.
+* Ajout des vents à 850 et 500 hPa ainsi que du jet-stream à 300 hPa.
+* Ajout de l'humidité et des géopotentiels à 850 et 500 hPa.
+* Ajout des cartes de rayonnement solaire et des bilans nets ondes courtes et longues.
+* Intégration de l'auto-guérison du pipeline lorsque la production publiée devient trop ancienne.
 
 = 1.5.2 =
 * En-tête compact, ville, bouton de détection et commune affichée sur une même ligne sur grand écran.

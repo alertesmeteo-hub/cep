@@ -40,7 +40,7 @@ python scripts/update_cep_france.py \
 
 ## Installation WordPress
 
-Installez le ZIP séparé `cep-ecmwf-france-v1.5.2.zip`, activez-le, puis utilisez :
+Installez le ZIP séparé `cep-ecmwf-france-v1.5.4.zip`, activez-le, puis utilisez :
 
 ```text
 [cep_meteo]
@@ -65,4 +65,4 @@ https://raw.githubusercontent.com/alertesmeteo-hub/cep/data
 - API Découpage administratif de la République française pour la recherche des communes
 - [France GeoJSON](https://github.com/gregoiredavid/france-geojson), tracés IGN Admin Express COG sous Licence Ouverte
 
-Site : [www.alertes-meteo.com](https://www.alertes-meteo.com/) — module v1.5.2.
+Site : [www.alertes-meteo.com](https://www.alertes-meteo.com/) — module v1.5.4 (03/09/2026).
