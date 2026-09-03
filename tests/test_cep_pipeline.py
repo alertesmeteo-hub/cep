@@ -20,6 +20,7 @@ from update_cep_france import (  # noqa: E402
     forecast_steps,
     grid_index,
     message_field,
+    retrieve_ifs_step,
     storm_diagnostics,
     transform_step,
 )
@@ -107,6 +108,9 @@ class CEPGridTests(unittest.TestCase):
         metadata = {
             1: {"shortName": "z", "typeOfLevel": "surface"},
             2: {"shortName": "z", "typeOfLevel": "isobaricInhPa"},
+            3: {"shortName": "t", "typeOfLevel": "isobaricInhPa", "level": 850},
+            4: {"shortName": "u", "typeOfLevel": "isobaricInhPa", "level": 300},
+            5: {"shortName": "gh", "typeOfLevel": "isobaricInhPa", "level": 500},
         }
 
         def fake_get(gid: int, key: str, default=None):
@@ -115,6 +119,67 @@ class CEPGridTests(unittest.TestCase):
         with patch("update_cep_france.safe_get", side_effect=fake_get):
             self.assertEqual(message_field(1), "surface_geopotential")
             self.assertIsNone(message_field(2))
+            self.assertEqual(message_field(3), "temperature_850_k")
+            self.assertEqual(message_field(4), "wind_u_300_ms")
+            self.assertEqual(message_field(5), "geopotential_500_m")
+
+    def test_pressure_level_and_radiation_fields_are_transformed(self) -> None:
+        shape = (1,)
+        raw = {
+            "temperature_k": np.array([283.15]),
+            "surface_temperature_k": np.array([285.15]),
+            "temperature_850_k": np.array([278.15]),
+            "temperature_500_k": np.array([253.15]),
+            "dewpoint_k": np.array([280.15]),
+            "wind_u_ms": np.array([0.0]),
+            "wind_v_ms": np.array([0.0]),
+            "wind_u_850_ms": np.array([3.0]),
+            "wind_v_850_ms": np.array([4.0]),
+            "wind_u_500_ms": np.array([6.0]),
+            "wind_v_500_ms": np.array([8.0]),
+            "wind_u_300_ms": np.array([30.0]),
+            "wind_v_300_ms": np.array([40.0]),
+            "humidity_850_pct": np.array([75.0]),
+            "humidity_500_pct": np.array([40.0]),
+            "geopotential_500_m": np.array([5600.0]),
+            "geopotential_850_m": np.array([1500.0]),
+            "global_radiation_jm2": np.array([5_000_000.0]),
+            "net_shortwave_jm2": np.array([4_000_000.0]),
+            "net_longwave_jm2": np.array([-1_000_000.0]),
+        }
+        result, _state = transform_step(raw, np.zeros(shape), {}, 3)
+        self.assertEqual(float(result["surface_temperature_c"][0]), 12.0)
+        self.assertEqual(float(result["temperature_850_c"][0]), 5.0)
+        self.assertEqual(float(result["temperature_500_c"][0]), -20.0)
+        self.assertEqual(float(result["wind_speed_850_kmh"][0]), 18.0)
+        self.assertEqual(float(result["wind_speed_500_kmh"][0]), 36.0)
+        self.assertEqual(float(result["wind_speed_300_kmh"][0]), 180.0)
+        self.assertEqual(float(result["global_radiation_mjm2"][0]), 5.0)
+
+    def test_surface_and_pressure_level_downloads_are_combined(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls = []
+
+            def retrieve(self, **request) -> None:
+                self.calls.append(request)
+                Path(request["target"]).write_bytes(
+                    b"PRESSURE" if "levelist" in request else b"SURFACE"
+                )
+
+        client = FakeClient()
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "step.grib2"
+            retrieve_ifs_step(
+                client,
+                datetime(2026, 9, 3, tzinfo=timezone.utc),
+                6,
+                destination,
+            )
+            self.assertEqual(destination.read_bytes(), b"SURFACEPRESSURE")
+        self.assertEqual(len(client.calls), 2)
+        self.assertNotIn("levelist", client.calls[0])
+        self.assertEqual(client.calls[1]["levelist"], [300, 500, 850])
 
     def test_precise_department_boundaries_are_rendered(self) -> None:
         boundary_path = (

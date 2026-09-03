@@ -14,19 +14,108 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('CEP_VERSION', '1.5.2');
-define('CEP_RELEASE_DATE', '26/08/2026');
+define('CEP_VERSION', '1.5.3');
+define('CEP_RELEASE_DATE', '30/08/2026');
 define('CEP_OPTION_BASE_URL', 'cep_national_data_base_url');
 define(
     'CEP_DEFAULT_BASE_URL',
     'https://raw.githubusercontent.com/alertesmeteo-hub/cep/data'
 );
 
+// Auto-guérison du pipeline CEP : si index.json est resté bloqué trop
+// longtemps (cron GitHub Actions peu fiable), chaque chargement de la page
+// relance côté serveur un nouveau run via workflow_dispatch. Le jeton
+// GitHub reste EXCLUSIVEMENT côté serveur (jamais envoyé au navigateur) —
+// à définir dans wp-config.php :
+//   define('CEP_GITHUB_TOKEN', 'github_pat_xxx...');
+// Jeton « fine-grained », limité au dépôt alertesmeteo-hub/cep, permission
+// « Actions » en Read and write. Même mécanisme que AIFS_GITHUB_TOKEN /
+// AMCVR_GITHUB_TOKEN.
+define('CEP_GITHUB_REPO', 'alertesmeteo-hub/cep');
+define('CEP_GITHUB_DATA_BRANCH', 'data');
+define('CEP_GITHUB_WORKFLOW_BRANCH', 'main');
+define('CEP_GITHUB_WORKFLOW_FILE', 'update-cep.yml');
+// CEP publie deux runs par jour (00 h et 12 h UTC) : le seuil doit couvrir
+// largement cet écart sans jamais se déclencher sur un cycle normal.
+define('CEP_STALE_THRESHOLD_MIN', 16 * 60);
+
 add_action('wp_enqueue_scripts', 'cep_register_assets');
 add_action('admin_init', 'cep_register_settings');
 add_action('admin_menu', 'cep_add_settings_page');
 add_shortcode('cep_meteo', 'cep_render_shortcode');
 add_filter('plugin_action_links_' . plugin_basename(__FILE__), 'cep_plugin_action_links');
+add_action('wp_ajax_cep_autoheal', 'cep_handle_autoheal');
+add_action('wp_ajax_nopriv_cep_autoheal', 'cep_handle_autoheal');
+
+function cep_handle_autoheal() {
+    if (!defined('CEP_GITHUB_TOKEN') || !CEP_GITHUB_TOKEN) {
+        wp_send_json_success(array('configured' => false));
+    }
+
+    if (get_transient('cep_autoheal_lock')) {
+        wp_send_json_success(array('skipped' => true));
+    }
+    set_transient('cep_autoheal_lock', 1, 5 * MINUTE_IN_SECONDS);
+
+    $generated_at = cep_fetch_generated_at();
+    if (null === $generated_at) {
+        wp_send_json_success(array('configured' => true, 'checked' => false));
+    }
+
+    $age_minutes = (time() - $generated_at) / 60;
+    if ($age_minutes <= CEP_STALE_THRESHOLD_MIN) {
+        wp_send_json_success(array('configured' => true, 'stale' => false, 'age_minutes' => round($age_minutes)));
+    }
+
+    if (get_transient('cep_autoheal_cooldown')) {
+        wp_send_json_success(array('configured' => true, 'stale' => true, 'triggered' => false, 'cooldown' => true));
+    }
+    set_transient('cep_autoheal_cooldown', 1, 30 * MINUTE_IN_SECONDS);
+
+    $triggered = cep_trigger_workflow();
+    wp_send_json_success(array('configured' => true, 'stale' => true, 'triggered' => $triggered));
+}
+
+function cep_fetch_generated_at() {
+    $url = 'https://api.github.com/repos/' . CEP_GITHUB_REPO . '/contents/index.json'
+        . '?ref=' . rawurlencode(CEP_GITHUB_DATA_BRANCH);
+    $response = wp_remote_get($url, array(
+        'headers' => array(
+            'Accept'     => 'application/vnd.github.raw',
+            'User-Agent' => 'cep-ecmwf-france-autoheal',
+        ),
+        'timeout' => 8,
+    ));
+    if (is_wp_error($response) || 200 !== wp_remote_retrieve_response_code($response)) {
+        return null;
+    }
+    $data = json_decode(wp_remote_retrieve_body($response), true);
+    if (empty($data['generated_at'])) {
+        return null;
+    }
+    $timestamp = strtotime($data['generated_at']);
+    return $timestamp ? $timestamp : null;
+}
+
+function cep_trigger_workflow() {
+    $url = 'https://api.github.com/repos/' . CEP_GITHUB_REPO . '/actions/workflows/'
+        . rawurlencode(CEP_GITHUB_WORKFLOW_FILE) . '/dispatches';
+    $response = wp_remote_post($url, array(
+        'headers' => array(
+            'Accept'        => 'application/vnd.github+json',
+            'Authorization' => 'Bearer ' . CEP_GITHUB_TOKEN,
+            'Content-Type'  => 'application/json',
+            'User-Agent'    => 'cep-ecmwf-france-autoheal',
+        ),
+        'body'    => wp_json_encode(array('ref' => CEP_GITHUB_WORKFLOW_BRANCH)),
+        'timeout' => 8,
+    ));
+    if (is_wp_error($response)) {
+        return false;
+    }
+    $code = wp_remote_retrieve_response_code($response);
+    return $code >= 200 && $code < 300;
+}
 
 function cep_plugin_action_links($links) {
     $settings_link = sprintf(
@@ -73,6 +162,9 @@ function cep_register_assets() {
         CEP_VERSION,
         true
     );
+    wp_localize_script('cep-table', 'CEP_AUTOHEAL', array(
+        'url' => admin_url('admin-ajax.php?action=cep_autoheal'),
+    ));
 }
 
 function cep_register_settings() {
@@ -142,6 +234,20 @@ function cep_render_settings_page() {
         <p><code>[cep_meteo code="75056" departement="75" ville="Paris" heures="240"]</code></p>
         <p><code>[cep_meteo code="66136" departement="66" ville="Perpignan" selecteur="non"]</code> : une seule ville, sans recherche.</p>
         <p>Le visiteur peut ensuite rechercher n’importe quelle commune ou saisir un code postal.</p>
+        <h2>Auto-guérison du pipeline</h2>
+        <p>
+            Statut : <strong><?php echo (defined('CEP_GITHUB_TOKEN') && CEP_GITHUB_TOKEN) ? '✅ Configurée' : '⚠️ Non configurée'; ?></strong>
+        </p>
+        <p>
+            Si <code>index.json</code> reste bloqué plus de <?php echo esc_html((int) round(CEP_STALE_THRESHOLD_MIN / 60)); ?> heures,
+            chaque chargement de cette page relance automatiquement le pipeline sur GitHub. Pour l'activer, ajouter dans
+            <code>wp-config.php</code> :
+        </p>
+        <p><code>define('CEP_GITHUB_TOKEN', 'github_pat_xxx...');</code></p>
+        <p>
+            Jeton « fine-grained » GitHub, limité au dépôt <code>alertesmeteo-hub/cep</code>, permission
+            « Actions : Read and write » uniquement. Il n'est jamais transmis au navigateur.
+        </p>
     </div>
     <?php
 }

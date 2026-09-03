@@ -120,6 +120,9 @@ INTEGER_COLUMNS = {
 
 MAP_FIELDS = {
     "temperature_c",
+    "surface_temperature_c",
+    "temperature_850_c",
+    "temperature_500_c",
     "wind_chill_c",
     "dewpoint_c",
     "humidex",
@@ -134,12 +137,22 @@ MAP_FIELDS = {
     "wind_gust_kmh",
     "wind_u_kmh",
     "wind_v_kmh",
+    "wind_speed_850_kmh",
+    "wind_speed_500_kmh",
+    "wind_speed_300_kmh",
     "pressure_hpa",
     "surface_pressure_hpa",
     "cloud_cover_pct",
     "cloud_low_pct",
     "cloud_mid_pct",
     "cloud_high_pct",
+    "humidity_850_pct",
+    "humidity_500_pct",
+    "geopotential_500_m",
+    "geopotential_850_m",
+    "global_radiation_mjm2",
+    "net_shortwave_mjm2",
+    "net_longwave_mjm2",
     "cape_jkg",
     "reflectivity_dbz",
     "altitude_m",
@@ -407,15 +420,29 @@ def mask_missing(values: np.ndarray, missing_value: Any) -> np.ndarray:
 
 def message_field(gid: int) -> str | None:
     short_name = str(safe_get(gid, "shortName", ""))
+    level_type = str(safe_get(gid, "typeOfLevel", ""))
+    level = int(safe_get(gid, "level", -1))
     if short_name == "z":
         # Une requête ECMWF sur `z` renvoie le relief de surface puis de
         # nombreux géopotentiels isobares. Sans ce filtre, le dernier message
         # (500 hPa) écrasait le relief et donnait environ 5 800 m à Perpignan.
-        return (
-            "surface_geopotential"
-            if str(safe_get(gid, "typeOfLevel", "")) == "surface"
-            else None
-        )
+        if level_type == "surface":
+            return "surface_geopotential"
+        if level_type == "isobaricInhPa" and level in {500, 850}:
+            return f"geopotential_{level}_m2s2"
+        return None
+    if level_type == "isobaricInhPa":
+        pressure_fields = {
+            "t": "temperature_{level}_k",
+            "u": "wind_u_{level}_ms",
+            "v": "wind_v_{level}_ms",
+            "r": "humidity_{level}_pct",
+            "gh": "geopotential_{level}_m",
+        }
+        template = pressure_fields.get(short_name)
+        if template and level in {300, 500, 850}:
+            return template.format(level=level)
+        return None
     direct = {
         "2t": "temperature_k",
         "2d": "dewpoint_k",
@@ -427,6 +454,10 @@ def message_field(gid: int) -> str | None:
         "sp": "surface_pressure_pa",
         "msl": "mean_sea_pressure_pa",
         "tcc": "cloud_total_fraction",
+        "skt": "surface_temperature_k",
+        "ssrd": "global_radiation_jm2",
+        "ssr": "net_shortwave_jm2",
+        "str": "net_longwave_jm2",
         "lcc": "cloud_low_pct",
         "mcc": "cloud_mid_pct",
         "hcc": "cloud_high_pct",
@@ -752,6 +783,9 @@ def transform_step(
 ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
     shape = altitude.shape
     temperature = array_like(raw, "temperature_k", shape) - 273.15
+    surface_temperature = array_like(raw, "surface_temperature_k", shape) - 273.15
+    temperature_850 = array_like(raw, "temperature_850_k", shape) - 273.15
+    temperature_500 = array_like(raw, "temperature_500_k", shape) - 273.15
     direct_dewpoint = array_like(raw, "dewpoint_k", shape) - 273.15
     temp_gamma = 17.625 * temperature / (243.04 + temperature)
     dew_gamma = 17.625 * direct_dewpoint / (243.04 + direct_dewpoint)
@@ -788,6 +822,18 @@ def transform_step(
     wind_speed = np.hypot(u_wind, v_wind) * 3.6
     wind_direction = np.degrees(np.arctan2(-u_wind, -v_wind)) % 360.0
     gust_speed = gust_scalar * 3.6
+    wind_speed_850 = np.hypot(
+        array_like(raw, "wind_u_850_ms", shape),
+        array_like(raw, "wind_v_850_ms", shape),
+    ) * 3.6
+    wind_speed_500 = np.hypot(
+        array_like(raw, "wind_u_500_ms", shape),
+        array_like(raw, "wind_v_500_ms", shape),
+    ) * 3.6
+    wind_speed_300 = np.hypot(
+        array_like(raw, "wind_u_300_ms", shape),
+        array_like(raw, "wind_v_300_ms", shape),
+    ) * 3.6
 
     relative = np.clip(humidity / 100.0, 0.01, 1.0)
     gamma = np.log(relative) + 17.625 * temperature / (243.04 + temperature)
@@ -893,8 +939,26 @@ def transform_step(
     snow_risk[(snow_fresh >= 1.0) | ((precipitation >= 3) & (temperature <= 0))] = 3
     snow_risk[(snow_fresh >= 3.0) | ((precipitation >= 8) & (temperature <= -1))] = 4
 
+    geopotential_500_height = array_like(raw, "geopotential_500_m", shape)
+    geopotential_500 = array_like(raw, "geopotential_500_m2s2", shape) / 9.80665
+    geopotential_500 = np.where(
+        np.isfinite(geopotential_500_height),
+        geopotential_500_height,
+        geopotential_500,
+    )
+    geopotential_850_height = array_like(raw, "geopotential_850_m", shape)
+    geopotential_850 = array_like(raw, "geopotential_850_m2s2", shape) / 9.80665
+    geopotential_850 = np.where(
+        np.isfinite(geopotential_850_height),
+        geopotential_850_height,
+        geopotential_850,
+    )
+
     result = {
         "temperature_c": rounded(temperature, 1),
+        "surface_temperature_c": rounded(surface_temperature, 1),
+        "temperature_850_c": rounded(temperature_850, 1),
+        "temperature_500_c": rounded(temperature_500, 1),
         "wind_chill_c": rounded(wind_chill, 1),
         "dewpoint_c": rounded(dewpoint, 1),
         "humidex": rounded(humidex, 1),
@@ -905,15 +969,35 @@ def transform_step(
         "cloud_low_pct": rounded(cloud_low, 0),
         "cloud_mid_pct": rounded(cloud_mid, 0),
         "cloud_high_pct": rounded(cloud_high, 0),
+        "humidity_850_pct": rounded(np.clip(
+            array_like(raw, "humidity_850_pct", shape), 0, 100
+        ), 0),
+        "humidity_500_pct": rounded(np.clip(
+            array_like(raw, "humidity_500_pct", shape), 0, 100
+        ), 0),
         "precipitation_rate_mmh": rounded(precipitation_rate, 2),
         "wind_speed_kmh": rounded(wind_speed, 0),
         "wind_direction_deg": rounded(wind_direction, 0),
         "wind_gust_kmh": rounded(gust_speed, 0),
         "wind_u_kmh": rounded(u_wind * 3.6, 1),
         "wind_v_kmh": rounded(v_wind * 3.6, 1),
+        "wind_speed_850_kmh": rounded(wind_speed_850, 0),
+        "wind_speed_500_kmh": rounded(wind_speed_500, 0),
+        "wind_speed_300_kmh": rounded(wind_speed_300, 0),
         "pressure_hpa": rounded(pressure, 0),
         "pressure_surface_hpa": rounded(surface_pressure, 0),
         "surface_pressure_hpa": rounded(surface_pressure, 0),
+        "geopotential_500_m": rounded(geopotential_500, 0),
+        "geopotential_850_m": rounded(geopotential_850, 0),
+        "global_radiation_mjm2": rounded(
+            array_like(raw, "global_radiation_jm2", shape) / 1.0e6, 2
+        ),
+        "net_shortwave_mjm2": rounded(
+            array_like(raw, "net_shortwave_jm2", shape) / 1.0e6, 2
+        ),
+        "net_longwave_mjm2": rounded(
+            array_like(raw, "net_longwave_jm2", shape) / 1.0e6, 2
+        ),
         "visibility_km": rounded(array_like(raw, "visibility_m", shape) / 1000.0, 1),
         "condition_code": condition,
         "cape_jkg": rounded(cape, 0),
@@ -1077,10 +1161,13 @@ def write_departments(
     return department_index, total_size
 
 
-IFS_PARAMETERS = [
+IFS_SURFACE_PARAMETERS = [
     "2t", "2d", "10u", "10v", "10fg", "msl", "sp", "tcc",
-    "tp", "tprate", "sf", "sd", "mucape", "z",
+    "tp", "tprate", "sf", "sd", "mucape", "z", "skt", "ssrd",
+    "ssr", "str",
 ]
+IFS_PRESSURE_PARAMETERS = ["t", "u", "v", "r", "gh", "z"]
+IFS_PRESSURE_LEVELS = [300, 500, 850]
 
 
 def forecast_steps(forecast_hours: int) -> list[int]:
@@ -1103,9 +1190,25 @@ def retrieve_ifs_step(
         stream="oper",
         type="fc",
         step=lead,
-        param=IFS_PARAMETERS,
+        param=IFS_SURFACE_PARAMETERS,
         target=str(destination),
     )
+    pressure_destination = destination.with_name(
+        f"{destination.stem}-pressure{destination.suffix}"
+    )
+    client.retrieve(
+        date=run_time.strftime("%Y%m%d"),
+        time=run_time.hour,
+        stream="oper",
+        type="fc",
+        step=lead,
+        levelist=IFS_PRESSURE_LEVELS,
+        param=IFS_PRESSURE_PARAMETERS,
+        target=str(pressure_destination),
+    )
+    with destination.open("ab") as output, pressure_destination.open("rb") as source:
+        shutil.copyfileobj(source, output)
+    pressure_destination.unlink()
 
 
 def build_product(

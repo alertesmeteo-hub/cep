@@ -1755,6 +1755,13 @@
             }
         });
 
+        // Appel « fire-and-forget » côté serveur (jamais de jeton GitHub côté
+        // navigateur) : si le run publié est resté bloqué trop longtemps, le
+        // serveur WordPress relance lui-même le pipeline sur GitHub.
+        if (window.CEP_AUTOHEAL && window.CEP_AUTOHEAL.url) {
+            fetch(window.CEP_AUTOHEAL.url, { method: 'POST', cache: 'no-store' }).catch(function () {});
+        }
+
         if (!baseUrl) {
             showTableMessage('Adresse des données CEP non configurée.', true);
             return;
