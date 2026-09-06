@@ -31,7 +31,7 @@ from eccodes import (
 )
 
 LOGGER = logging.getLogger("cep.villes")
-PIPELINE_VERSION = "1.0.0"
+PIPELINE_VERSION = "1.0.1"
 DEFAULT_CURRENT_METADATA_URL = (
     "https://raw.githubusercontent.com/alertesmeteo-hub/cep/data-villes/index.json"
 )
