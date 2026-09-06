@@ -31,7 +31,7 @@ from eccodes import (
 )
 
 LOGGER = logging.getLogger("cep.villes")
-PIPELINE_VERSION = "1.2.0"
+PIPELINE_VERSION = "1.3.0"
 DEFAULT_CURRENT_METADATA_URL = (
     "https://raw.githubusercontent.com/alertesmeteo-hub/cep/data-villes/index.json"
 )
@@ -166,16 +166,13 @@ def round_to(value: float | None, step: float) -> float | None:
     return round(round(value / step) * step, 2)
 
 
-HOURLY_MAX_LEAD = 144  # résolution 3 h de l'IFS ; au-delà les pas passent à 6 h.
-
-
 def build_hourly(city_series: dict[str, Any], utc_offset_hours: float) -> list[dict[str, Any]]:
-    """Série pas-à-pas (résolution 3 h, ~6 jours) pour le sélecteur de jour et
-    le tableau heure par heure côté widget."""
+    """Série pas-à-pas sur toute la période demandée (résolution 3 h les 6
+    premiers jours, puis 6 h) pour le sélecteur de jour et le tableau heure
+    par heure côté widget — couvre les 15/16 jours, pas seulement les 6
+    premiers."""
     hourly = []
     for j, lead in enumerate(city_series["steps"]):
-        if lead > HOURLY_MAX_LEAD:
-            break
         iso_time = city_series["valid_time"][j]
         if not iso_time:
             continue
