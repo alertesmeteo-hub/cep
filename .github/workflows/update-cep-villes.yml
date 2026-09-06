@@ -58,12 +58,13 @@ jobs:
           root = Path("build/villes")
           index = json.loads((root / "index.json").read_text(encoding="utf-8"))
           assert index["status"] == "ok"
-          assert index["model"]["pipeline_version"] == "1.0.1"
+          assert index["model"]["pipeline_version"] == "1.1.0"
           assert len(index["villes"]) >= 1
           for entry in index["villes"]:
               city = json.loads((root / entry["file"]).read_text(encoding="utf-8"))
               assert city["current"] is not None
               assert len(city["daily"]) >= 10
+              assert len(city["today_periods"]) == 4
           print(f"Validation OK : {len(index['villes'])} ville(s) publiée(s)")
           PY
 

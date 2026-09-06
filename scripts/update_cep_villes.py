@@ -31,7 +31,7 @@ from eccodes import (
 )
 
 LOGGER = logging.getLogger("cep.villes")
-PIPELINE_VERSION = "1.0.1"
+PIPELINE_VERSION = "1.1.0"
 DEFAULT_CURRENT_METADATA_URL = (
     "https://raw.githubusercontent.com/alertesmeteo-hub/cep/data-villes/index.json"
 )
@@ -152,6 +152,58 @@ def retrieve_ifs_step(client: Client, run_time: datetime, lead: int, destination
     )
 
 
+def precip_probability_pct(precip_mm: float, cloud_pct: float) -> int:
+    """Estimation faute de prévision d'ensemble : 0 sans pluie déterministe,
+    sinon une fonction croissante de la lame d'eau et de la nébulosité."""
+    if not math.isfinite(precip_mm) or precip_mm <= 0.0:
+        return 0 if not math.isfinite(cloud_pct) or cloud_pct < 60 else 3
+    return int(round(min(95.0, 30.0 + precip_mm * 15.0)))
+
+
+PERIOD_TARGETS = [
+    ("matin", 9),
+    ("apresmidi", 15),
+    ("soir", 19),
+    ("nuit", 25),  # 1 h le lendemain, exprimé en heures depuis minuit du jour courant
+]
+
+
+def build_today_periods(city_series: dict[str, Any], utc_offset_hours: float) -> list[dict[str, Any]]:
+    """Repère, pour chaque créneau (matin/après-midi/soir/nuit), le pas +3 h
+    le plus proche de l'heure locale cible parmi les échéances du jour même."""
+    steps = city_series["steps"]
+    if not steps:
+        return []
+    periods = []
+    for key, target_local_hour in PERIOD_TARGETS:
+        best_index = None
+        best_delta = None
+        for j, lead in enumerate(steps):
+            if lead > 48:
+                break
+            local_hour = lead + utc_offset_hours
+            delta = abs(local_hour - target_local_hour)
+            if best_delta is None or delta < best_delta:
+                best_delta = delta
+                best_index = j
+        if best_index is None:
+            continue
+        temp = city_series["temperature_c"][best_index]
+        cloud = city_series["cloud_pct"][best_index] or 0.0
+        precip = city_series["precip_mm"][best_index] or 0.0
+        snow = city_series["snow_mm"][best_index] or 0.0
+        periods.append({
+            "key": key,
+            "temperature_c": temp,
+            "condition_code": condition_code(cloud, precip, snow),
+            "precip_pct": precip_probability_pct(precip, cloud),
+            "precip_mm": precip,
+            "wind_kmh": city_series["wind_kmh"][best_index],
+            "wind_dir_deg": city_series["wind_dir_deg"][best_index],
+        })
+    return periods
+
+
 def condition_code(cloud_pct: float, precip_mm: float, snow_mm: float) -> int:
     """0 clair · 1 peu nuageux · 2 nuageux · 3 pluie · 4 forte pluie · 5 neige."""
     if not math.isfinite(cloud_pct):
@@ -193,7 +245,7 @@ def build_product(
     previous_sf = np.full(n_cities, np.nan)
     series: list[dict[str, Any]] = [
         {"steps": [], "temperature_c": [], "cloud_pct": [], "precip_mm": [],
-         "snow_mm": [], "wind_kmh": [], "valid_time": []}
+         "snow_mm": [], "wind_kmh": [], "wind_dir_deg": [], "valid_time": []}
         for _ in villes
     ]
 
@@ -252,6 +304,7 @@ def build_product(
         u_wind = raw.get("10u", np.full(n_cities, np.nan))
         v_wind = raw.get("10v", np.full(n_cities, np.nan))
         wind_kmh = np.hypot(u_wind, v_wind) * 3.6
+        wind_dir_deg = np.degrees(np.arctan2(-u_wind, -v_wind)) % 360.0
 
         tp_total = raw.get("tp", np.full(n_cities, np.nan)) * 1000.0
         sf_total = raw.get("sf", np.full(n_cities, np.nan)) * 1000.0
@@ -268,6 +321,7 @@ def build_product(
             series[i]["precip_mm"].append(round(float(tp_increment[i]), 1) if math.isfinite(tp_increment[i]) else None)
             series[i]["snow_mm"].append(round(float(sf_increment[i]), 1) if math.isfinite(sf_increment[i]) else None)
             series[i]["wind_kmh"].append(round(float(wind_kmh[i]), 0) if math.isfinite(wind_kmh[i]) else None)
+            series[i]["wind_dir_deg"].append(round(float(wind_dir_deg[i]), 0) if math.isfinite(wind_dir_deg[i]) else None)
 
     index_entries = []
     for i, ville in enumerate(villes):
@@ -300,6 +354,7 @@ def build_product(
             ),
             "wind_kmh": series[i]["wind_kmh"][0] if series[i]["wind_kmh"] else None,
         }
+        today_periods = build_today_periods(series[i], float(ville.get("utc_offset_hours", 1)))
         payload = {
             "nom": ville["nom"],
             "slug": ville["slug"],
@@ -310,6 +365,7 @@ def build_product(
             "run_time": iso_utc(model_run),
             "pipeline_version": PIPELINE_VERSION,
             "current": current,
+            "today_periods": today_periods,
             "daily": [
                 {"date": date, "tmax": v["tmax"], "tmin": v["tmin"], "precip_mm": v["precip_mm"], "condition_code": v["condition"]}
                 for date, v in ordered_days
