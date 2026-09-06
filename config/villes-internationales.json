@@ -1,0 +1,6 @@
+{
+  "catalog_version": "1",
+  "villes": [
+    { "nom": "Milan", "slug": "milan", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 45.4642, "lon": 9.1900, "timezone": "Europe/Rome" }
+  ]
+}

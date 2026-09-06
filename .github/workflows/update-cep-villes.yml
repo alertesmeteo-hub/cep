@@ -1,0 +1,86 @@
+name: Mise à jour CEP Villes internationales
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Une production quotidienne, décalée de la France pour ne pas se
+    # concurrencer sur les runners.
+    - cron: "0 9 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-cep-villes
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v7
+
+      - name: Installer Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Installer les dépendances
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Produire les prévisions villes internationales
+        id: build
+        run: |
+          python scripts/update_cep_villes.py \
+            --catalog config/villes-internationales.json \
+            --output-dir build/villes \
+            --forecast-hours 360 \
+            --current-metadata-url \
+            "https://raw.githubusercontent.com/${{ github.repository }}/data-villes/index.json"
+          if test -f build/villes/index.json; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "Aucune nouvelle publication villes à envoyer."
+          fi
+
+      - name: Vérifier la publication
+        if: steps.build.outputs.publish == 'true'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("build/villes")
+          index = json.loads((root / "index.json").read_text(encoding="utf-8"))
+          assert index["status"] == "ok"
+          assert index["model"]["pipeline_version"] == "1.0.0"
+          assert len(index["villes"]) >= 1
+          for entry in index["villes"]:
+              city = json.loads((root / entry["file"]).read_text(encoding="utf-8"))
+              assert city["current"] is not None
+              assert len(city["daily"]) >= 10
+          print(f"Validation OK : {len(index['villes'])} ville(s) publiée(s)")
+          PY
+
+      - name: Publier la branche data-villes
+        if: steps.build.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          publish_dir="$(mktemp -d)"
+          cp -a build/villes/. "$publish_dir/"
+          touch "$publish_dir/.nojekyll"
+          cd "$publish_dir"
+          git init -b data-villes
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "Données villes internationales $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GH_REPOSITORY}.git"
+          git push --force origin data-villes
