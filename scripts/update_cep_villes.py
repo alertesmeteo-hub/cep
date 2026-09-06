@@ -226,7 +226,7 @@ def build_product(
                         step, lat_step = step_deg, lat_step_deg
                         point_indexes[:] = []
                         for ville in villes:
-                            row = int(round((lat_first - float(ville["lat"])) / lat_step))
+                            row = int(round((lat_first - float(ville["lat"])) / abs(lat_step)))
                             column = int(round(((float(ville["lon"]) - lon_first) % 360.0) / step)) % ni
                             row = max(0, min(nj - 1, row))
                             column = max(0, min(ni - 1, column))
