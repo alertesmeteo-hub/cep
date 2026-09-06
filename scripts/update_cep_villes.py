@@ -31,7 +31,7 @@ from eccodes import (
 )
 
 LOGGER = logging.getLogger("cep.villes")
-PIPELINE_VERSION = "1.1.0"
+PIPELINE_VERSION = "1.2.0"
 DEFAULT_CURRENT_METADATA_URL = (
     "https://raw.githubusercontent.com/alertesmeteo-hub/cep/data-villes/index.json"
 )
@@ -160,48 +160,40 @@ def precip_probability_pct(precip_mm: float, cloud_pct: float) -> int:
     return int(round(min(95.0, 30.0 + precip_mm * 15.0)))
 
 
-PERIOD_TARGETS = [
-    ("matin", 9),
-    ("apresmidi", 15),
-    ("soir", 19),
-    ("nuit", 25),  # 1 h le lendemain, exprimé en heures depuis minuit du jour courant
-]
+def round_to(value: float | None, step: float) -> float | None:
+    if value is None or not math.isfinite(value):
+        return None
+    return round(round(value / step) * step, 2)
 
 
-def build_today_periods(city_series: dict[str, Any], utc_offset_hours: float) -> list[dict[str, Any]]:
-    """Repère, pour chaque créneau (matin/après-midi/soir/nuit), le pas +3 h
-    le plus proche de l'heure locale cible parmi les échéances du jour même."""
-    steps = city_series["steps"]
-    if not steps:
-        return []
-    periods = []
-    for key, target_local_hour in PERIOD_TARGETS:
-        best_index = None
-        best_delta = None
-        for j, lead in enumerate(steps):
-            if lead > 48:
-                break
-            local_hour = lead + utc_offset_hours
-            delta = abs(local_hour - target_local_hour)
-            if best_delta is None or delta < best_delta:
-                best_delta = delta
-                best_index = j
-        if best_index is None:
+HOURLY_MAX_LEAD = 144  # résolution 3 h de l'IFS ; au-delà les pas passent à 6 h.
+
+
+def build_hourly(city_series: dict[str, Any], utc_offset_hours: float) -> list[dict[str, Any]]:
+    """Série pas-à-pas (résolution 3 h, ~6 jours) pour le sélecteur de jour et
+    le tableau heure par heure côté widget."""
+    hourly = []
+    for j, lead in enumerate(city_series["steps"]):
+        if lead > HOURLY_MAX_LEAD:
+            break
+        iso_time = city_series["valid_time"][j]
+        if not iso_time:
             continue
-        temp = city_series["temperature_c"][best_index]
-        cloud = city_series["cloud_pct"][best_index] or 0.0
-        precip = city_series["precip_mm"][best_index] or 0.0
-        snow = city_series["snow_mm"][best_index] or 0.0
-        periods.append({
-            "key": key,
+        temp = city_series["temperature_c"][j]
+        cloud = city_series["cloud_pct"][j] or 0.0
+        precip = city_series["precip_mm"][j] or 0.0
+        snow = city_series["snow_mm"][j] or 0.0
+        hourly.append({
+            "time_utc": iso_time,
+            "local_hour": int(round((lead + utc_offset_hours) % 24)),
             "temperature_c": temp,
             "condition_code": condition_code(cloud, precip, snow),
             "precip_pct": precip_probability_pct(precip, cloud),
-            "precip_mm": precip,
-            "wind_kmh": city_series["wind_kmh"][best_index],
-            "wind_dir_deg": city_series["wind_dir_deg"][best_index],
+            "precip_mm": round_to(precip, 0.5),
+            "wind_kmh": round_to(city_series["wind_kmh"][j], 5.0),
+            "wind_dir_deg": city_series["wind_dir_deg"][j],
         })
-    return periods
+    return hourly
 
 
 def condition_code(cloud_pct: float, precip_mm: float, snow_mm: float) -> int:
@@ -352,9 +344,10 @@ def build_product(
                 series[i]["precip_mm"][0] or 0.0 if series[i]["precip_mm"] else 0.0,
                 series[i]["snow_mm"][0] or 0.0 if series[i]["snow_mm"] else 0.0,
             ),
-            "wind_kmh": series[i]["wind_kmh"][0] if series[i]["wind_kmh"] else None,
+            "wind_kmh": round_to(series[i]["wind_kmh"][0], 5.0) if series[i]["wind_kmh"] else None,
         }
-        today_periods = build_today_periods(series[i], float(ville.get("utc_offset_hours", 1)))
+        utc_offset_hours = float(ville.get("utc_offset_hours", 1))
+        hourly = build_hourly(series[i], utc_offset_hours)
         payload = {
             "nom": ville["nom"],
             "slug": ville["slug"],
@@ -364,10 +357,11 @@ def build_product(
             "provider": "ECMWF IFS Open Data (0,25°)",
             "run_time": iso_utc(model_run),
             "pipeline_version": PIPELINE_VERSION,
+            "utc_offset_hours": utc_offset_hours,
             "current": current,
-            "today_periods": today_periods,
+            "hourly": hourly,
             "daily": [
-                {"date": date, "tmax": v["tmax"], "tmin": v["tmin"], "precip_mm": v["precip_mm"], "condition_code": v["condition"]}
+                {"date": date, "tmax": v["tmax"], "tmin": v["tmin"], "precip_mm": round_to(v["precip_mm"], 0.5), "condition_code": v["condition"]}
                 for date, v in ordered_days
             ],
         }
