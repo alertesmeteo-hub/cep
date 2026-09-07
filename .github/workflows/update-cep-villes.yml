@@ -58,7 +58,7 @@ jobs:
           root = Path("build/villes")
           index = json.loads((root / "index.json").read_text(encoding="utf-8"))
           assert index["status"] == "ok"
-          assert index["model"]["pipeline_version"] == "1.9.0"
+          assert index["model"]["pipeline_version"] == "1.10.0"
           assert len(index["villes"]) >= 1
           for entry in index["villes"]:
               city = json.loads((root / entry["file"]).read_text(encoding="utf-8"))
