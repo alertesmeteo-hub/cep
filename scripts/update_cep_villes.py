@@ -31,7 +31,7 @@ from eccodes import (
 )
 
 LOGGER = logging.getLogger("cep.villes")
-PIPELINE_VERSION = "1.5.0"
+PIPELINE_VERSION = "1.6.0"
 DEFAULT_CURRENT_METADATA_URL = (
     "https://raw.githubusercontent.com/alertesmeteo-hub/cep/data-villes/index.json"
 )
@@ -210,6 +210,26 @@ def condition_code(cloud_pct: float, precip_mm: float, snow_mm: float) -> int:
     return 0
 
 
+def nearest_valid_time_index(valid_times: list[str | None], now: datetime) -> int:
+    """Index de l'échéance dont l'heure de validité est la plus proche de
+    l'heure réelle : "current" ne doit pas rester figé sur le premier pas
+    du run (souvent déjà dans le passé au moment de la consultation)."""
+    best_index = 0
+    best_delta: float | None = None
+    for index, iso_time in enumerate(valid_times):
+        if not iso_time:
+            continue
+        try:
+            valid_time = datetime.fromisoformat(iso_time.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        delta = abs((valid_time - now).total_seconds())
+        if best_delta is None or delta < best_delta:
+            best_delta = delta
+            best_index = index
+    return best_index
+
+
 def build_product(
     client: Client,
     villes: list[dict[str, Any]],
@@ -334,14 +354,15 @@ def build_product(
             entry["condition"] = max(entry["condition"], code)
 
         ordered_days = sorted(daily.items())[:16]
+        now_index = nearest_valid_time_index(series[i]["valid_time"], datetime.now(timezone.utc))
         current = {
-            "temperature_c": series[i]["temperature_c"][0] if series[i]["temperature_c"] else None,
+            "temperature_c": series[i]["temperature_c"][now_index] if series[i]["temperature_c"] else None,
             "condition_code": condition_code(
-                series[i]["cloud_pct"][0] or 0.0 if series[i]["cloud_pct"] else 0.0,
-                series[i]["precip_mm"][0] or 0.0 if series[i]["precip_mm"] else 0.0,
-                series[i]["snow_mm"][0] or 0.0 if series[i]["snow_mm"] else 0.0,
+                series[i]["cloud_pct"][now_index] or 0.0 if series[i]["cloud_pct"] else 0.0,
+                series[i]["precip_mm"][now_index] or 0.0 if series[i]["precip_mm"] else 0.0,
+                series[i]["snow_mm"][now_index] or 0.0 if series[i]["snow_mm"] else 0.0,
             ),
-            "wind_kmh": round_to(series[i]["wind_kmh"][0], 5.0) if series[i]["wind_kmh"] else None,
+            "wind_kmh": round_to(series[i]["wind_kmh"][now_index], 5.0) if series[i]["wind_kmh"] else None,
         }
         utc_offset_hours = float(ville.get("utc_offset_hours", 1))
         hourly = build_hourly(series[i], utc_offset_hours)
