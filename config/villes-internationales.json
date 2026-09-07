@@ -1,5 +1,5 @@
 {
-  "catalog_version": "3",
+  "catalog_version": "4",
   "villes": [
     { "nom": "Milan", "slug": "milan", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 45.4642, "lon": 9.1900, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
     { "nom": "Turin", "slug": "turin", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 45.070, "lon": 7.686, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
@@ -21,14 +21,25 @@
     { "nom": "Tarente", "slug": "tarente", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 40.472, "lon": 17.240, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
     { "nom": "Messine", "slug": "messine", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 38.194, "lon": 15.552, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
     { "nom": "Sassari", "slug": "sassari", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 40.727, "lon": 8.559, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
-    { "nom": "Belfast", "slug": "belfast", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 54.597, "lon": -5.930, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
-    { "nom": "Sligo", "slug": "sligo", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 54.276, "lon": -8.475, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
-    { "nom": "Dublin", "slug": "dublin", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.349, "lon": -6.260, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
-    { "nom": "Athlone", "slug": "athlone", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.423, "lon": -7.940, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
-    { "nom": "Galway", "slug": "galway", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.271, "lon": -9.056, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
-    { "nom": "Limerick", "slug": "limerick", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.664, "lon": -8.623, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
-    { "nom": "Waterford", "slug": "waterford", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.259, "lon": -7.110, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Boyle", "slug": "boyle", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.973, "lon": -8.295, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Bray", "slug": "bray", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.202, "lon": -6.098, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Carlow", "slug": "carlow", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.836, "lon": -6.926, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Carrick-on-Shannon", "slug": "carrick-on-shannon", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.947, "lon": -8.091, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Castlebar", "slug": "castlebar", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.855, "lon": -9.298, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Clifden", "slug": "clifden", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.489, "lon": -10.021, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
     { "nom": "Cork", "slug": "cork", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 51.898, "lon": -8.475, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
-    { "nom": "Killarney", "slug": "killarney", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.059, "lon": -9.507, "timezone": "Europe/Dublin", "utc_offset_hours": 1 }
+    { "nom": "Dublin", "slug": "dublin", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.349, "lon": -6.260, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Dundalk", "slug": "dundalk", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 54.001, "lon": -6.403, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Ennis", "slug": "ennis", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.845, "lon": -8.986, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Galway", "slug": "galway", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.271, "lon": -9.056, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Kilkenny", "slug": "kilkenny", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.654, "lon": -7.246, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Killarney", "slug": "killarney", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.059, "lon": -9.507, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Letterkenny", "slug": "letterkenny", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 54.951, "lon": -7.734, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Limerick", "slug": "limerick", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.664, "lon": -8.623, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Longford", "slug": "longford", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.727, "lon": -7.793, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Naas", "slug": "naas", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.219, "lon": -6.662, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Roscommon", "slug": "roscommon", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.628, "lon": -8.190, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Waterford", "slug": "waterford", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.259, "lon": -7.110, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Wicklow", "slug": "wicklow", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.980, "lon": -6.045, "timezone": "Europe/Dublin", "utc_offset_hours": 1 }
   ]
 }
