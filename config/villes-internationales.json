@@ -1,6 +1,34 @@
 {
-  "catalog_version": "1",
+  "catalog_version": "3",
   "villes": [
-    { "nom": "Milan", "slug": "milan", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 45.4642, "lon": 9.1900, "timezone": "Europe/Rome", "utc_offset_hours": 2 }
+    { "nom": "Milan", "slug": "milan", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 45.4642, "lon": 9.1900, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Turin", "slug": "turin", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 45.070, "lon": 7.686, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Vérone", "slug": "verone", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 45.438, "lon": 10.992, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Venise", "slug": "venise", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 45.440, "lon": 12.315, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Trieste", "slug": "trieste", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 45.649, "lon": 13.777, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Gênes", "slug": "genes", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 44.407, "lon": 8.934, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Bologne", "slug": "bologne", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 44.494, "lon": 11.343, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Florence", "slug": "florence", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 43.769, "lon": 11.256, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Ancône", "slug": "ancone", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 43.616, "lon": 13.517, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Pérouse", "slug": "perouse", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 43.112, "lon": 12.389, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Rome", "slug": "rome", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 41.903, "lon": 12.496, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Naples", "slug": "naples", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 40.852, "lon": 14.268, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Bari", "slug": "bari", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 41.125, "lon": 16.867, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Cagliari", "slug": "cagliari", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 39.223, "lon": 9.122, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Palerme", "slug": "palerme", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 38.116, "lon": 13.361, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Catane", "slug": "catane", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 37.502, "lon": 15.087, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Pise", "slug": "pise", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 43.716, "lon": 10.400, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Tarente", "slug": "tarente", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 40.472, "lon": 17.240, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Messine", "slug": "messine", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 38.194, "lon": 15.552, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Sassari", "slug": "sassari", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 40.727, "lon": 8.559, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
+    { "nom": "Belfast", "slug": "belfast", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 54.597, "lon": -5.930, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Sligo", "slug": "sligo", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 54.276, "lon": -8.475, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Dublin", "slug": "dublin", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.349, "lon": -6.260, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Athlone", "slug": "athlone", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.423, "lon": -7.940, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Galway", "slug": "galway", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.271, "lon": -9.056, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Limerick", "slug": "limerick", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.664, "lon": -8.623, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Waterford", "slug": "waterford", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.259, "lon": -7.110, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Cork", "slug": "cork", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 51.898, "lon": -8.475, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Killarney", "slug": "killarney", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.059, "lon": -9.507, "timezone": "Europe/Dublin", "utc_offset_hours": 1 }
   ]
 }
