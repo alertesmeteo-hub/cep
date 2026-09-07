@@ -1,5 +1,5 @@
 {
-  "catalog_version": "8",
+  "catalog_version": "9",
   "villes": [
     { "nom": "Milan", "slug": "milan", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 45.4642, "lon": 9.1900, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
     { "nom": "Turin", "slug": "turin", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 45.070, "lon": 7.686, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
@@ -80,7 +80,8 @@
     { "nom": "Murcie", "slug": "murcie", "pays": "Espagne", "pays_slug": "espagne", "continent": "europe", "lat": 37.9922, "lon": -1.1307, "timezone": "Europe/Madrid", "utc_offset_hours": 2 },
     { "nom": "Palma de Majorque", "slug": "palma-de-majorque", "pays": "Espagne", "pays_slug": "espagne", "continent": "europe", "lat": 39.5696, "lon": 2.6502, "timezone": "Europe/Madrid", "utc_offset_hours": 2 },
     { "nom": "Salamanque", "slug": "salamanque", "pays": "Espagne", "pays_slug": "espagne", "continent": "europe", "lat": 40.9701, "lon": -5.6635, "timezone": "Europe/Madrid", "utc_offset_hours": 2 },
-    { "nom": "Santa Cruz de Ténérife", "slug": "santa-cruz-de-tenerife", "pays": "Espagne", "pays_slug": "espagne", "continent": "europe", "lat": 28.4636, "lon": -16.2518, "timezone": "Atlantic/Canary", "utc_offset_hours": 1 },
+    { "nom": "Santa Cruz de Ténérife", "slug": "santa-cruz-de-tenerife", "pays": "Canaries", "pays_slug": "canaries", "continent": "europe", "lat": 28.4636, "lon": -16.2518, "timezone": "Atlantic/Canary", "utc_offset_hours": 1 },
+    { "nom": "Las Palmas de Gran Canaria", "slug": "las-palmas-de-gran-canaria", "pays": "Canaries", "pays_slug": "canaries", "continent": "europe", "lat": 28.1235, "lon": -15.4363, "timezone": "Atlantic/Canary", "utc_offset_hours": 1 },
     { "nom": "Santander", "slug": "santander", "pays": "Espagne", "pays_slug": "espagne", "continent": "europe", "lat": 43.4623, "lon": -3.8099, "timezone": "Europe/Madrid", "utc_offset_hours": 2 },
     { "nom": "Saragosse", "slug": "saragosse", "pays": "Espagne", "pays_slug": "espagne", "continent": "europe", "lat": 41.6488, "lon": -0.8891, "timezone": "Europe/Madrid", "utc_offset_hours": 2 },
     { "nom": "Tarragone", "slug": "tarragone", "pays": "Espagne", "pays_slug": "espagne", "continent": "europe", "lat": 41.1189, "lon": 1.2445, "timezone": "Europe/Madrid", "utc_offset_hours": 2 },
