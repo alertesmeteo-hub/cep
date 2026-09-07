@@ -177,6 +177,10 @@ class DepartmentData:
     global_point_ids: np.ndarray
     points: list[list[Any]]
     communes: list[list[Any]]
+    # Candidats de repli par commune (ids locaux, triés du plus proche au
+    # plus lointain) utilisés pour écarter un point de grille littoral/marin
+    # une fois l'altitude connue (voir SEA_LIKE_ALTITUDE_M dans build_product).
+    commune_candidates: list[list[int]]
 
 
 @dataclass
@@ -274,6 +278,36 @@ def rain_nearby_points(latitude: float, longitude: float) -> dict[int, tuple[flo
     return result
 
 
+# Rayon de recherche des points de repli "terrestres" pour une commune, et
+# altitude en dessous de laquelle un point de grille est considéré comme
+# potentiellement marin/lagunaire plutôt que représentatif du sol de la
+# commune (grilles côtières IFS 0,25° : la maille la plus proche tombe
+# parfois en mer ou sur un étang littoral, ce qui amortit artificiellement
+# les températures diurnes des villes côtières comme Perpignan).
+LAND_SEARCH_RADIUS_KM = 32.0
+SEA_LIKE_ALTITUDE_M = 10.0
+
+
+def nearby_grid_points(
+    latitude: float, longitude: float, max_km: float
+) -> list[tuple[int, float, float, float]]:
+    """Nœuds de la grille 0,25° triés par distance croissante, jusqu'à max_km."""
+    _index, center_lat, center_lon = grid_index(latitude, longitude)
+    seen: dict[int, tuple[float, float, float]] = {}
+    for dy in (-0.25, 0.0, 0.25):
+        for dx in (-0.25, 0.0, 0.25):
+            index, lat, lon = grid_index(center_lat + dy, center_lon + dx)
+            dlat = math.radians(lat - latitude)
+            dlon = math.radians(lon - longitude)
+            a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(latitude)) * math.cos(math.radians(lat)) * math.sin(dlon / 2) ** 2
+            distance = 6371.0088 * 2 * math.asin(min(1.0, math.sqrt(a)))
+            if distance <= max_km + 1e-7:
+                if index not in seen or distance < seen[index][2]:
+                    seen[index] = (lat, lon, distance)
+    ordered = sorted(seen.items(), key=lambda item: item[1][2])
+    return [(index, lat, lon, distance) for index, (lat, lon, distance) in ordered]
+
+
 def load_catalog(path: Path) -> NationalCatalog:
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
@@ -281,7 +315,7 @@ def load_catalog(path: Path) -> NationalCatalog:
     if len(raw_communes) < 34_000:
         raise RuntimeError("Le catalogue communal France est incomplet")
 
-    mapped: list[tuple[list[Any], int, float, float]] = []
+    mapped: list[tuple[list[Any], int, list[int]]] = []
     point_coordinates: dict[int, tuple[float, float]] = {}
     rain_department_points: dict[str, set[int]] = defaultdict(set)
     for commune in raw_communes:
@@ -292,8 +326,14 @@ def load_catalog(path: Path) -> NationalCatalog:
         model_index, model_latitude, model_longitude = grid_index(
             latitude, longitude
         )
-        mapped.append((commune, model_index, model_latitude, model_longitude))
+        candidates = nearby_grid_points(latitude, longitude, LAND_SEARCH_RADIUS_KM)
+        candidate_indexes = [index for index, _lat, _lon, _distance in candidates]
+        if model_index not in candidate_indexes:
+            candidate_indexes.insert(0, model_index)
+        mapped.append((commune, model_index, candidate_indexes))
         point_coordinates[model_index] = (model_latitude, model_longitude)
+        for index, lat, lon, _distance in candidates:
+            point_coordinates.setdefault(index, (lat, lon))
         neighbors = rain_nearby_points(latitude, longitude)
         point_coordinates.update(neighbors)
         rain_department_points[str(commune[2]).upper()].update(neighbors)
@@ -310,12 +350,15 @@ def load_catalog(path: Path) -> NationalCatalog:
     )
 
     department_votes: dict[int, Counter[str]] = defaultdict(Counter)
-    by_department: dict[str, list[tuple[list[Any], int]]] = defaultdict(list)
-    for commune, model_index, _latitude, _longitude in mapped:
+    by_department: dict[str, list[tuple[list[Any], int, list[int]]]] = defaultdict(list)
+    for commune, model_index, candidate_indexes in mapped:
         department = str(commune[2]).upper()
         global_id = global_identifier[model_index]
+        candidate_global_ids = [
+            global_identifier[index] for index in candidate_indexes
+        ]
         department_votes[global_id][department] += 1
-        by_department[department].append((commune, global_id))
+        by_department[department].append((commune, global_id, candidate_global_ids))
 
     for department, indexes in rain_department_points.items():
         for index in indexes:
@@ -330,8 +373,15 @@ def load_catalog(path: Path) -> NationalCatalog:
 
     departments: dict[str, DepartmentData] = {}
     for department, entries in sorted(by_department.items()):
-        global_ids = sorted({global_id for _commune, global_id in entries} |
-                            {global_identifier[index] for index in rain_department_points[department]})
+        global_ids = sorted(
+            {global_id for _commune, global_id, _candidates in entries}
+            | {
+                candidate_id
+                for _commune, _global_id, candidates in entries
+                for candidate_id in candidates
+            }
+            | {global_identifier[index] for index in rain_department_points[department]}
+        )
         local_identifier = {
             global_id: position for position, global_id in enumerate(global_ids)
         }
@@ -345,7 +395,11 @@ def load_catalog(path: Path) -> NationalCatalog:
                 float(commune[6]),
                 local_identifier[global_id],
             ]
-            for commune, global_id in entries
+            for commune, global_id, _candidates in entries
+        ]
+        commune_candidates = [
+            [local_identifier[candidate_id] for candidate_id in candidates]
+            for _commune, _global_id, candidates in entries
         ]
         compact_points = [
             [
@@ -360,6 +414,7 @@ def load_catalog(path: Path) -> NationalCatalog:
             global_point_ids=np.asarray(global_ids, dtype=np.int64),
             points=compact_points,
             communes=compact_communes,
+            commune_candidates=commune_candidates,
         )
 
     if len(departments) != 96:
@@ -1289,6 +1344,28 @@ def build_product(
                             department.points[position].append(
                                 json_number(point_altitude[int(global_id)], integer=True)
                             )
+                        for commune_position, candidate_locals in enumerate(
+                            department.commune_candidates
+                        ):
+                            chosen_local = candidate_locals[0]
+                            chosen_altitude = point_altitude[
+                                int(department.global_point_ids[chosen_local])
+                            ]
+                            if not (
+                                np.isfinite(chosen_altitude)
+                                and chosen_altitude >= SEA_LIKE_ALTITUDE_M
+                            ):
+                                for local_id in candidate_locals[1:]:
+                                    altitude_value = point_altitude[
+                                        int(department.global_point_ids[local_id])
+                                    ]
+                                    if (
+                                        np.isfinite(altitude_value)
+                                        and altitude_value >= SEA_LIKE_ALTITUDE_M
+                                    ):
+                                        chosen_local = local_id
+                                        break
+                            department.communes[commune_position][6] = chosen_local
                 assert point_altitude is not None and map_altitude is not None
                 transformed, point_state = transform_step(
                     step["values"], point_altitude, point_state, lead
