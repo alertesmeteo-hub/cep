@@ -1,5 +1,5 @@
 {
-  "catalog_version": "5",
+  "catalog_version": "6",
   "villes": [
     { "nom": "Milan", "slug": "milan", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 45.4642, "lon": 9.1900, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
     { "nom": "Turin", "slug": "turin", "pays": "Italie", "pays_slug": "italie", "continent": "europe", "lat": 45.070, "lon": 7.686, "timezone": "Europe/Rome", "utc_offset_hours": 2 },
@@ -52,6 +52,14 @@
     { "nom": "Doolin", "slug": "doolin", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 53.017, "lon": -9.393, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
     { "nom": "Adare", "slug": "adare", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 52.562, "lon": -8.790, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
     { "nom": "Cobh", "slug": "cobh", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 51.851, "lon": -8.294, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
-    { "nom": "Kenmare", "slug": "kenmare", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 51.879, "lon": -9.583, "timezone": "Europe/Dublin", "utc_offset_hours": 1 }
+    { "nom": "Kenmare", "slug": "kenmare", "pays": "Irlande", "pays_slug": "irlande", "continent": "europe", "lat": 51.879, "lon": -9.583, "timezone": "Europe/Dublin", "utc_offset_hours": 1 },
+    { "nom": "Andorre-la-Vieille", "slug": "andorre-la-vieille", "pays": "Andorre", "pays_slug": "andorre", "continent": "europe", "lat": 42.5063, "lon": 1.5218, "timezone": "Europe/Andorra", "utc_offset_hours": 2 },
+    { "nom": "Escaldes-Engordany", "slug": "escaldes-engordany", "pays": "Andorre", "pays_slug": "andorre", "continent": "europe", "lat": 42.5089, "lon": 1.5347, "timezone": "Europe/Andorra", "utc_offset_hours": 2 },
+    { "nom": "Encamp", "slug": "encamp", "pays": "Andorre", "pays_slug": "andorre", "continent": "europe", "lat": 42.5359, "lon": 1.5828, "timezone": "Europe/Andorra", "utc_offset_hours": 2 },
+    { "nom": "La Massana", "slug": "la-massana", "pays": "Andorre", "pays_slug": "andorre", "continent": "europe", "lat": 42.5455, "lon": 1.5147, "timezone": "Europe/Andorra", "utc_offset_hours": 2 },
+    { "nom": "Ordino", "slug": "ordino", "pays": "Andorre", "pays_slug": "andorre", "continent": "europe", "lat": 42.5563, "lon": 1.5330, "timezone": "Europe/Andorra", "utc_offset_hours": 2 },
+    { "nom": "Sant Julià de Lòria", "slug": "sant-julia-de-loria", "pays": "Andorre", "pays_slug": "andorre", "continent": "europe", "lat": 42.4639, "lon": 1.4914, "timezone": "Europe/Andorra", "utc_offset_hours": 2 },
+    { "nom": "Canillo", "slug": "canillo", "pays": "Andorre", "pays_slug": "andorre", "continent": "europe", "lat": 42.5675, "lon": 1.5975, "timezone": "Europe/Andorra", "utc_offset_hours": 2 },
+    { "nom": "Pas de la Case", "slug": "pas-de-la-case", "pays": "Andorre", "pays_slug": "andorre", "continent": "europe", "lat": 42.5428, "lon": 1.7325, "timezone": "Europe/Andorra", "utc_offset_hours": 2 }
   ]
 }
