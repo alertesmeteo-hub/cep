@@ -1,5 +1,5 @@
 {
-  "catalog_version": "11",
+  "catalog_version": "12",
   "villes": [
     {
       "nom": "Milan",
@@ -2002,6 +2002,204 @@
       "lon": -2.8917,
       "timezone": "Europe/London",
       "utc_offset_hours": 1
+    },
+    {
+      "nom": "Vienne",
+      "slug": "vienne",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 48.2082,
+      "lon": 16.3738,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Graz",
+      "slug": "graz",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 47.0707,
+      "lon": 15.4395,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Linz",
+      "slug": "linz",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 48.3069,
+      "lon": 14.2858,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Salzbourg",
+      "slug": "salzbourg",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 47.8095,
+      "lon": 13.055,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Innsbruck",
+      "slug": "innsbruck",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 47.2692,
+      "lon": 11.4041,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Klagenfurt",
+      "slug": "klagenfurt",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 46.6247,
+      "lon": 14.3055,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Villach",
+      "slug": "villach",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 46.6111,
+      "lon": 13.8558,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Wels",
+      "slug": "wels",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 48.1575,
+      "lon": 14.0289,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "St. Pölten",
+      "slug": "st-poelten",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 48.2047,
+      "lon": 15.6256,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Dornbirn",
+      "slug": "dornbirn",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 47.4125,
+      "lon": 9.7417,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Bregenz",
+      "slug": "bregenz",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 47.5031,
+      "lon": 9.7471,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Eisenstadt",
+      "slug": "eisenstadt",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 47.8455,
+      "lon": 16.5243,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Kitzbühel",
+      "slug": "kitzbuhel",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 47.4467,
+      "lon": 12.3925,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Zell am See",
+      "slug": "zell-am-see",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 47.3239,
+      "lon": 12.7958,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Bad Ischl",
+      "slug": "bad-ischl",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 47.7113,
+      "lon": 13.6222,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Hallstatt",
+      "slug": "hallstatt",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 47.5622,
+      "lon": 13.6493,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Lienz",
+      "slug": "lienz",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 46.8291,
+      "lon": 12.7683,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
+    },
+    {
+      "nom": "Wörgl",
+      "slug": "worgl",
+      "pays": "Autriche",
+      "pays_slug": "autriche",
+      "continent": "europe",
+      "lat": 47.4833,
+      "lon": 12.0667,
+      "timezone": "Europe/Vienna",
+      "utc_offset_hours": 2
     }
   ]
 }
