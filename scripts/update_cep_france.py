@@ -34,6 +34,13 @@ from eccodes import (
 from scipy.ndimage import map_coordinates
 
 from cep_maps import DEFAULT_BOUNDS, CEPMapRenderer
+from synoptic_map import (
+    SYNOPTIC_REGIONS,
+    SYNOPTIC_STYLES,
+    SynopticGrid,
+    SynopticMeta,
+    render_synoptic_map,
+)
 
 
 LOGGER = logging.getLogger("cep.france")
@@ -1266,6 +1273,87 @@ def retrieve_ifs_step(
     pressure_destination.unlink()
 
 
+SYNOPTIC_LEVEL_HPA = 500
+SYNOPTIC_MAX_LEAD_HOUR = 240
+
+
+def extract_native_field(
+    path: Path, short_name: str, level_hpa: int | None = None
+) -> np.ndarray:
+    """Lit un champ GRIB sur sa grille native complète (CEP_NJ x CEP_NI)."""
+    with path.open("rb") as handle:
+        while True:
+            gid = codes_grib_new_from_file(handle)
+            if gid is None:
+                break
+            try:
+                if str(safe_get(gid, "shortName", "")) != short_name:
+                    continue
+                if level_hpa is not None and int(safe_get(gid, "level", -1)) != level_hpa:
+                    continue
+                values = mask_missing(
+                    codes_get_double_array(gid, "values"),
+                    safe_get(gid, "missingValue"),
+                ).reshape(CEP_NJ, CEP_NI)
+                return values
+            finally:
+                codes_release(gid)
+    raise RuntimeError(f"Champ {short_name}@{level_hpa} introuvable dans {path}")
+
+
+def native_lonlat_subset(
+    field: np.ndarray, extent: tuple[float, float, float, float]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Découpe un champ sur grille native CEP selon (west, east, south, north)."""
+    west, east, south, north = extent
+    latitudes = CEP_LAT_FIRST - np.arange(CEP_NJ) * CEP_STEP
+    longitudes = ((CEP_LON_FIRST + np.arange(CEP_NI) * CEP_STEP + 180.0) % 360.0) - 180.0
+    row_mask = (latitudes >= south) & (latitudes <= north)
+    column_mask = (longitudes >= west) & (longitudes <= east)
+    rows = np.where(row_mask)[0]
+    columns = np.where(column_mask)[0]
+    subset = field[np.ix_(rows, columns)]
+    order = np.argsort(longitudes[columns])
+    return latitudes[rows], longitudes[columns][order], subset[:, order]
+
+
+def build_synoptic_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte synoptique gh500 + MSLP pour une échéance et une région.
+
+    `combined_grib` est le fichier produit par `retrieve_ifs_step`, qui
+    contient déjà à la fois les champs de surface (msl) et les champs
+    isobares (gh @ 300/500/850 hPa) concaténés en un seul GRIB2.
+    """
+    extent = SYNOPTIC_REGIONS[region]
+
+    mslp_native = extract_native_field(combined_grib, "msl")
+    gh_native = extract_native_field(combined_grib, "gh", level_hpa=SYNOPTIC_LEVEL_HPA)
+    latitudes, longitudes, mslp = native_lonlat_subset(mslp_native, extent)
+    _, _, gh = native_lonlat_subset(gh_native, extent)
+    grid = SynopticGrid(
+        latitudes=latitudes,
+        longitudes=longitudes,
+        geopotential_height_m=gh,  # shortName "gh" est déjà en mètres géopotentiels
+        mean_sea_level_pressure_pa=mslp,
+    )
+    meta = SynopticMeta(
+        level_hpa=SYNOPTIC_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+    )
+    return render_synoptic_map(
+        grid, meta, destination, extent=extent, style=SYNOPTIC_STYLES[region]
+    )
+
+
 def build_product(
     client: Client,
     catalog: NationalCatalog,
@@ -1313,6 +1401,9 @@ def build_product(
     map_state: dict[str, np.ndarray] = {}
     model_run = run_hint
     source_bytes = 0
+
+    synoptic_directory = result_directory / "maps" / "synoptic"
+    synoptic_steps: list[dict[str, Any]] = []
 
     try:
         steps = forecast_steps(forecast_hours)
@@ -1385,6 +1476,27 @@ def build_product(
                         valid_time=step["valid_time"],
                         fields=map_fields,
                     )
+                if lead <= SYNOPTIC_MAX_LEAD_HOUR:
+                    LOGGER.info("Cartes synoptiques +%03d h", lead)
+                    step_files: dict[str, str] = {}
+                    for region in SYNOPTIC_REGIONS:
+                        relative = f"maps/synoptic/{region}/gh500-{lead:03d}h.png"
+                        build_synoptic_map(
+                            combined_grib=destination,
+                            run_time=model_run,
+                            lead_hour=lead,
+                            valid_time=step["valid_time"],
+                            destination=result_directory / relative,
+                            region=region,
+                        )
+                        step_files[region] = relative
+                    synoptic_steps.append(
+                        {
+                            "lead_hour": lead,
+                            "valid_time": iso_utc(step["valid_time"]),
+                            "files": step_files,
+                        }
+                    )
                 iso_time = iso_utc(step["valid_time"])
                 for code, department in catalog.departments.items():
                     line = [
@@ -1421,6 +1533,19 @@ def build_product(
         catalog,
         generated_at,
     )
+
+    synoptic_manifest = {
+        "level_hpa": SYNOPTIC_LEVEL_HPA,
+        "variable": "gh_mslp",
+        "run_time": run_time,
+        "regions": list(SYNOPTIC_REGIONS),
+        "steps": synoptic_steps,
+    }
+    if synoptic_steps:
+        synoptic_directory.mkdir(parents=True, exist_ok=True)
+        with (synoptic_directory / "index.json").open("w", encoding="utf-8") as handle:
+            json.dump(synoptic_manifest, handle, ensure_ascii=False, separators=(",", ":"))
+            handle.write("\n")
 
     model = {
         "name": "CEP / ECMWF IFS déterministe",
@@ -1478,6 +1603,12 @@ def build_product(
             "layers": len(map_manifest["layers"]),
             "steps": len(map_manifest["steps"]),
             "places": places_count,
+        },
+        "synoptic": {
+            "status": "ok" if synoptic_steps else "unavailable",
+            "level_hpa": SYNOPTIC_LEVEL_HPA,
+            "manifest": "maps/synoptic/index.json",
+            "steps": len(synoptic_steps),
         },
         "departments": department_index,
         "total_department_bytes": total_size,

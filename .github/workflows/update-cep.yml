@@ -32,6 +32,10 @@ jobs:
           cache: pip
 
       - name: Installer les dépendances
+        # matplotlib et cartopy s'installent via des wheels manylinux qui
+        # embarquent déjà GEOS/PROJ : pas de paquet apt supplémentaire requis
+        # (vérifié : pip install seul suffit, aucun besoin de
+        # libgeos-dev/libproj-dev sur ubuntu-latest avec pip récent).
         run: python -m pip install --disable-pip-version-check -r requirements.txt
 
       - name: Produire les cartes et les prévisions CEP
@@ -67,6 +71,8 @@ jobs:
           assert len(maps["steps"]) == 65
           assert (root / "departements/66.json").is_file()
           assert index["model"]["forecast_hours_requested"] == 360
+          assert index["synoptic"]["status"] == "ok"
+          assert index["synoptic"]["steps"] >= 1
           from datetime import datetime, timedelta
           department = json.loads((root / "departements/66.json").read_text(encoding="utf-8"))
           run = datetime.fromisoformat(index["model"]["run_time"].replace("Z", "+00:00"))
