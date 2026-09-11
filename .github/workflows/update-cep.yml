@@ -2,6 +2,11 @@ name: Mise à jour CEP France
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Forcer la reconstruction même si le run est déjà publié (ex. changement de code sans nouveau run IFS)"
+        type: boolean
+        default: false
   schedule:
     # Vérification horaire des deux fenêtres de disponibilité IFS. GitHub
     # Actions utilise UTC : 05-10 couvre 07-11 en France selon la saison,
@@ -46,7 +51,8 @@ jobs:
             --output-dir build/national \
             --forecast-hours 360 \
             --current-metadata-url \
-            "https://raw.githubusercontent.com/${{ github.repository }}/data/index.json"
+            "https://raw.githubusercontent.com/${{ github.repository }}/data/index.json" \
+            ${{ github.event.inputs.force == 'true' && '--force' || '' }}
           if test -f build/national/index.json; then
             echo "publish=true" >> "$GITHUB_OUTPUT"
           else
