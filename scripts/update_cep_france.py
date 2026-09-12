@@ -39,7 +39,9 @@ from synoptic_map import (
     SYNOPTIC_STYLES,
     SynopticGrid,
     SynopticMeta,
+    WindTempGrid,
     render_synoptic_map,
+    render_wind_temp_map,
 )
 
 
@@ -1354,6 +1356,51 @@ def build_synoptic_map(
     )
 
 
+WIND_TEMP_LEVEL_HPA = 850
+WIND_TEMP_LEAD_HOURS = [24, 48, 72, 96, 120, 144, 168, 192, 216, 240]
+
+
+def build_wind_temp_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte température + vent à 850 hPa pour une échéance/région.
+
+    Comme `build_synoptic_map`, réutilise le fichier isobare déjà téléchargé
+    par `retrieve_ifs_step` (t/u/v @ 850 hPa font partie de
+    IFS_PRESSURE_PARAMETERS) : aucun téléchargement supplémentaire.
+    """
+    extent = SYNOPTIC_REGIONS[region]
+
+    t_native = extract_native_field(combined_grib, "t", level_hpa=WIND_TEMP_LEVEL_HPA) - 273.15
+    u_native = extract_native_field(combined_grib, "u", level_hpa=WIND_TEMP_LEVEL_HPA)
+    v_native = extract_native_field(combined_grib, "v", level_hpa=WIND_TEMP_LEVEL_HPA)
+    latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
+    _, _, wind_u = native_lonlat_subset(u_native, extent)
+    _, _, wind_v = native_lonlat_subset(v_native, extent)
+    grid = WindTempGrid(
+        latitudes=latitudes,
+        longitudes=longitudes,
+        temperature_c=temperature,
+        wind_u_ms=wind_u,
+        wind_v_ms=wind_v,
+    )
+    meta = SynopticMeta(
+        level_hpa=WIND_TEMP_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Température",
+    )
+    return render_wind_temp_map(
+        grid, meta, destination, extent=extent, style=SYNOPTIC_STYLES[region]
+    )
+
+
 def build_product(
     client: Client,
     catalog: NationalCatalog,
@@ -1404,6 +1451,8 @@ def build_product(
 
     synoptic_directory = result_directory / "maps" / "synoptic"
     synoptic_steps: list[dict[str, Any]] = []
+    wind_temp_directory = result_directory / "maps" / "synoptic-wind850"
+    wind_temp_steps: list[dict[str, Any]] = []
 
     try:
         steps = forecast_steps(forecast_hours)
@@ -1497,6 +1546,27 @@ def build_product(
                             "files": step_files,
                         }
                     )
+                if lead in WIND_TEMP_LEAD_HOURS:
+                    LOGGER.info("Cartes température & vent 850 hPa +%03d h", lead)
+                    wind_temp_files: dict[str, str] = {}
+                    for region in SYNOPTIC_REGIONS:
+                        relative = f"maps/synoptic-wind850/{region}/wind850-{lead:03d}h.png"
+                        build_wind_temp_map(
+                            combined_grib=destination,
+                            run_time=model_run,
+                            lead_hour=lead,
+                            valid_time=step["valid_time"],
+                            destination=result_directory / relative,
+                            region=region,
+                        )
+                        wind_temp_files[region] = relative
+                    wind_temp_steps.append(
+                        {
+                            "lead_hour": lead,
+                            "valid_time": iso_utc(step["valid_time"]),
+                            "files": wind_temp_files,
+                        }
+                    )
                 iso_time = iso_utc(step["valid_time"])
                 for code, department in catalog.departments.items():
                     line = [
@@ -1545,6 +1615,19 @@ def build_product(
         synoptic_directory.mkdir(parents=True, exist_ok=True)
         with (synoptic_directory / "index.json").open("w", encoding="utf-8") as handle:
             json.dump(synoptic_manifest, handle, ensure_ascii=False, separators=(",", ":"))
+            handle.write("\n")
+
+    wind_temp_manifest = {
+        "level_hpa": WIND_TEMP_LEVEL_HPA,
+        "variable": "temperature_wind",
+        "run_time": run_time,
+        "regions": list(SYNOPTIC_REGIONS),
+        "steps": wind_temp_steps,
+    }
+    if wind_temp_steps:
+        wind_temp_directory.mkdir(parents=True, exist_ok=True)
+        with (wind_temp_directory / "index.json").open("w", encoding="utf-8") as handle:
+            json.dump(wind_temp_manifest, handle, ensure_ascii=False, separators=(",", ":"))
             handle.write("\n")
 
     model = {
@@ -1609,6 +1692,12 @@ def build_product(
             "level_hpa": SYNOPTIC_LEVEL_HPA,
             "manifest": "maps/synoptic/index.json",
             "steps": len(synoptic_steps),
+        },
+        "synoptic_wind850": {
+            "status": "ok" if wind_temp_steps else "unavailable",
+            "level_hpa": WIND_TEMP_LEVEL_HPA,
+            "manifest": "maps/synoptic-wind850/index.json",
+            "steps": len(wind_temp_steps),
         },
         "departments": department_index,
         "total_department_bytes": total_size,

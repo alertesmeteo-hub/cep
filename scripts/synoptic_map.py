@@ -175,28 +175,19 @@ def _find_pressure_centers(
     return _extrema(highs_mask, reverse=True), _extrema(lows_mask, reverse=False)
 
 
-def render_synoptic_map(
-    grid: SynopticGrid,
-    meta: SynopticMeta,
-    destination: Path,
-    extent: tuple[float, float, float, float] = DEFAULT_EXTENT,
-    figsize: tuple[float, float] = (11.0, 9.0),
-    dpi: int = 130,
-    style: str = "classic",
-) -> Path:
-    """Trace géopotentiel (fond coloré) et isobares MSLP.
+def _setup_map_axes(
+    extent: tuple[float, float, float, float],
+    style: str,
+    figsize: tuple[float, float],
+    dpi: int,
+):
+    """Crée la figure/les axes cartopy, dimensionnés selon le style.
 
-    `grid.geopotential_height_m` doit être en mètres géopotentiels (déjà
-    divisé par g si issu du champ GRIB `z`). `grid.mean_sea_level_pressure_pa`
-    en pascals. `extent` = (west, east, south, north) en degrés. `style` vaut
-    "classic" (isohypses noires + isobares blanches labellisées, légende
-    verticale) ou "infoclimat" (pas d'isohypses, centres H/L, légende
-    horizontale, en-tête coin haut-gauche/haut-droit).
+    "classic" : figure au ratio de `figsize`, marge fixe pour en-tête/légende.
+    "infoclimat" : canevas 16:9 plein cadre, carte centrée sans déformation.
+    Retourne (fig, ax, data_crs, infoclimat).
     """
-    gh_dam = grid.geopotential_height_m / 10.0
-    mslp_hpa = grid.mean_sea_level_pressure_pa / 100.0
     infoclimat = style == "infoclimat"
-
     west, east, south, north = extent
     data_crs = ccrs.PlateCarree()
     projection = ccrs.Mercator(
@@ -233,6 +224,45 @@ def render_synoptic_map(
     fig = plt.figure(figsize=(fig_width, fig_height), dpi=dpi)
     ax = fig.add_axes(axes_rect, projection=projection)
     ax.set_extent(extent, crs=data_crs)
+    return fig, ax, data_crs, infoclimat
+
+
+def _add_basemap(ax) -> None:
+    coastline = _local_feature(
+        "ne_50m_coastline", facecolor="none", edgecolor="dimgray", linewidth=0.6
+    )
+    borders = _local_feature(
+        "ne_50m_admin_0_boundary_lines_land",
+        facecolor="none", edgecolor="dimgray", linewidth=0.4,
+    )
+    if coastline is not None:
+        ax.add_feature(coastline)
+    if borders is not None:
+        ax.add_feature(borders)
+
+
+def render_synoptic_map(
+    grid: SynopticGrid,
+    meta: SynopticMeta,
+    destination: Path,
+    extent: tuple[float, float, float, float] = DEFAULT_EXTENT,
+    figsize: tuple[float, float] = (11.0, 9.0),
+    dpi: int = 130,
+    style: str = "classic",
+) -> Path:
+    """Trace géopotentiel (fond coloré) et isobares MSLP.
+
+    `grid.geopotential_height_m` doit être en mètres géopotentiels (déjà
+    divisé par g si issu du champ GRIB `z`). `grid.mean_sea_level_pressure_pa`
+    en pascals. `extent` = (west, east, south, north) en degrés. `style` vaut
+    "classic" (isohypses noires + isobares blanches labellisées, légende
+    verticale) ou "infoclimat" (pas d'isohypses, centres H/L, légende
+    horizontale, en-tête coin haut-gauche/haut-droit).
+    """
+    gh_dam = grid.geopotential_height_m / 10.0
+    mslp_hpa = grid.mean_sea_level_pressure_pa / 100.0
+
+    fig, ax, data_crs, infoclimat = _setup_map_axes(extent, style, figsize, dpi)
 
     cmap = GEOPOTENTIAL_CMAP_INFOCLIMAT if infoclimat else GEOPOTENTIAL_CMAP
     if infoclimat:
@@ -279,17 +309,7 @@ def render_synoptic_map(
                 ha="center", va="center", fontsize=9, fontweight="bold", color="white",
             )
 
-    coastline = _local_feature(
-        "ne_50m_coastline", facecolor="none", edgecolor="dimgray", linewidth=0.6
-    )
-    borders = _local_feature(
-        "ne_50m_admin_0_boundary_lines_land",
-        facecolor="none", edgecolor="dimgray", linewidth=0.4,
-    )
-    if coastline is not None:
-        ax.add_feature(coastline)
-    if borders is not None:
-        ax.add_feature(borders)
+    _add_basemap(ax)
 
     if infoclimat:
         # Carte plein cadre : en-tête et légende en surimpression (fond
@@ -347,4 +367,135 @@ def render_synoptic_map(
     fig.savefig(destination, format="png")
     plt.close(fig)
     LOGGER.info("Carte synoptique écrite : %s", destination)
+    return destination
+
+
+# Palette température 850 hPa reprise des cartes interactives existantes
+# (cep_maps.py), pour rester visuellement cohérent sur tout le site.
+TEMPERATURE_850_CMAP = LinearSegmentedColormap.from_list(
+    "temperature_850",
+    [
+        "#321253", "#423c9c", "#326eb7", "#3da6cf", "#5ac7ad",
+        "#bcd84e", "#f0a33a", "#d6403e", "#701d4c",
+    ],
+)
+
+
+@dataclass(frozen=True)
+class WindTempGrid:
+    """Grille lat/lon régulière portant température et vent à un niveau."""
+
+    latitudes: np.ndarray
+    longitudes: np.ndarray
+    temperature_c: np.ndarray  # 2D (nj, ni)
+    wind_u_ms: np.ndarray  # 2D (nj, ni)
+    wind_v_ms: np.ndarray  # 2D (nj, ni)
+
+    def __post_init__(self) -> None:
+        expected = (len(self.latitudes), len(self.longitudes))
+        for name in ("temperature_c", "wind_u_ms", "wind_v_ms"):
+            if getattr(self, name).shape != expected:
+                raise ValueError(
+                    f"{name} a la forme {getattr(self, name).shape}, attendu {expected}"
+                )
+
+
+def render_wind_temp_map(
+    grid: WindTempGrid,
+    meta: SynopticMeta,
+    destination: Path,
+    extent: tuple[float, float, float, float] = DEFAULT_EXTENT,
+    figsize: tuple[float, float] = (11.0, 9.0),
+    dpi: int = 130,
+    style: str = "classic",
+) -> Path:
+    """Trace température (fond coloré) et vent (barbules) à un niveau pression.
+
+    `grid.temperature_c` en degrés Celsius, `grid.wind_u_ms`/`wind_v_ms` en
+    m/s. `meta.level_hpa` indique le niveau (typiquement 850 hPa).
+    """
+    fig, ax, data_crs, infoclimat = _setup_map_axes(extent, style, figsize, dpi)
+
+    temp_low = int(np.floor(np.nanmin(grid.temperature_c) / 2.0) * 2.0)
+    temp_high = int(np.ceil(np.nanmax(grid.temperature_c) / 2.0) * 2.0)
+    temp_levels = np.arange(temp_low, temp_high + 2.0, 2.0)
+    fill = ax.contourf(
+        grid.longitudes, grid.latitudes, grid.temperature_c,
+        levels=temp_levels, cmap=TEMPERATURE_850_CMAP, transform=data_crs, extend="both",
+    )
+
+    # Barbules de vent sous-échantillonnées pour rester lisibles quelle que
+    # soit l'emprise (environ 25 barbules sur la largeur de la carte).
+    step = max(1, len(grid.longitudes) // 25)
+    wind_knots_u = grid.wind_u_ms[::step, ::step] * 1.94384
+    wind_knots_v = grid.wind_v_ms[::step, ::step] * 1.94384
+    ax.barbs(
+        grid.longitudes[::step], grid.latitudes[::step],
+        wind_knots_u, wind_knots_v,
+        transform=data_crs, length=5.5, linewidth=0.7, color="black",
+    )
+
+    _add_basemap(ax)
+
+    unit_label = f"Température {meta.level_hpa} hPa (°C) & vent (nœuds)"
+    if infoclimat:
+        run = f"{meta.run_time.strftime('%HZ')} {_format_french_date(meta.run_time)}"
+        valid = f"{_format_french_date(meta.valid_time, with_weekday=True)} {meta.valid_time.strftime('%H')}H UTC"
+        label_box = {"facecolor": "white", "alpha": 0.75, "edgecolor": "none", "pad": 4}
+        ax.text(
+            0.01, 0.99, f"Run ECMWF/CEP 0,25°\n{run}",
+            transform=ax.transAxes, ha="left", va="top", fontsize=9, bbox=label_box,
+        )
+        ax.text(
+            0.99, 0.99, f"Échéance : {valid}",
+            transform=ax.transAxes, ha="right", va="top", fontsize=10,
+            fontweight="bold", color="#cc0000", bbox=label_box,
+        )
+        ax.text(
+            0.99, 0.935, f"+{meta.lead_hour}H",
+            transform=ax.transAxes, ha="right", va="top", fontsize=13,
+            fontweight="bold", color="#cc0000", bbox=label_box,
+        )
+        ax.text(
+            0.5, 0.99,
+            f"Température à {meta.level_hpa}hPa\nVent à {meta.level_hpa}hPa (barbules, nœuds)",
+            transform=ax.transAxes, ha="center", va="top", fontsize=9, bbox=label_box,
+        )
+        colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
+        colorbar = fig.colorbar(
+            fill, cax=colorbar_axes, orientation="horizontal",
+            ticks=temp_levels[::2],
+        )
+        colorbar.ax.tick_params(labelsize=8, colors="black", labeltop=True, labelbottom=False)
+        colorbar_axes.set_facecolor("white")
+        ax.text(
+            0.32, 0.0375, unit_label,
+            transform=ax.transAxes, ha="right", va="center", fontsize=8, bbox=label_box,
+        )
+        ax.text(
+            0.99, 0.02, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
+            color="black", bbox=label_box,
+        )
+    else:
+        fig.colorbar(
+            fill, ax=ax, orientation="vertical", fraction=0.025, pad=0.01,
+            label=unit_label,
+        )
+        run = meta.run_time.strftime("%d/%m/%Y %HZ")
+        valid = meta.valid_time.strftime("%a %d/%m %HZ")
+        fig.suptitle(
+            f"Température & vent {meta.level_hpa} hPa  |  Run {run}  —  "
+            f"Échéance +{meta.lead_hour:03d} h  —  Validité {valid}",
+            fontsize=10, y=0.985,
+        )
+        fig.text(
+            0.5, 0.015, "www.alertes-meteo.com",
+            ha="center", va="bottom", fontsize=9, color="dimgray",
+        )
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(destination, format="png")
+    plt.close(fig)
+    LOGGER.info("Carte vent/température écrite : %s", destination)
     return destination
