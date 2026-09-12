@@ -1379,7 +1379,7 @@ def build_synoptic_map(
 
 
 WIND_TEMP_LEVEL_HPA = 850
-WIND_TEMP_LEAD_HOURS = [24, 48, 72, 96, 120, 144, 168, 192, 216, 240]
+WIND_TEMP_LEAD_HOURS = [0, 24, 48, 72, 96, 120, 144, 168, 192, 216, 240]
 
 
 def build_wind_temp_map(
