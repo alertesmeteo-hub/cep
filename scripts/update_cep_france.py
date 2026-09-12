@@ -66,6 +66,13 @@ CEP_STEP = 0.25
 MAP_WIDTH = 2200
 MAP_HEIGHT = 1640
 
+# EUROPE_BOUNDS couvre une bande beaucoup plus large que haute (86° de
+# longitude sur 33° de latitude) comparé au domaine France (30° x ~19°
+# en projection Mercator) : réutiliser MAP_WIDTH/MAP_HEIGHT écraserait le
+# rendu. Hauteur calculée pour conserver des pixels carrés en Mercator.
+EUROPE_MAP_WIDTH = 2200
+EUROPE_MAP_HEIGHT = 1236
+
 # Format compact partagé avec le JavaScript. Les diagnostics explicitement
 # dérivés sont conservés car ils servent aux tableaux orages et neige.
 VALUE_COLUMNS = (
@@ -1479,7 +1486,9 @@ def build_product(
         / "departements.geojson"
     )
     map_sampler = MapSampler(MAP_WIDTH, MAP_HEIGHT)
-    map_sampler_europe = MapSampler(MAP_WIDTH, MAP_HEIGHT, bounds=EUROPE_BOUNDS)
+    map_sampler_europe = MapSampler(
+        EUROPE_MAP_WIDTH, EUROPE_MAP_HEIGHT, bounds=EUROPE_BOUNDS
+    )
     map_samplers = {"france": map_sampler, "europe": map_sampler_europe}
     map_renderer = CEPMapRenderer(
         np.empty(0),
@@ -1498,8 +1507,8 @@ def build_product(
         np.empty(0),
         np.empty(0),
         result_directory / "maps-europe",
-        width=MAP_WIDTH,
-        height=MAP_HEIGHT,
+        width=EUROPE_MAP_WIDTH,
+        height=EUROPE_MAP_HEIGHT,
         bounds=EUROPE_BOUNDS,
         france_latitudes=catalog.point_latitudes,
         france_longitudes=catalog.point_longitudes,
@@ -1558,7 +1567,9 @@ def build_product(
                     if map_altitude is None:
                         map_altitude = np.zeros((MAP_HEIGHT, MAP_WIDTH))
                     if map_altitude_europe is None:
-                        map_altitude_europe = np.zeros((MAP_HEIGHT, MAP_WIDTH))
+                        map_altitude_europe = np.zeros(
+                            (EUROPE_MAP_HEIGHT, EUROPE_MAP_WIDTH)
+                        )
                     for department in catalog.departments.values():
                         for position, global_id in enumerate(department.global_point_ids):
                             department.points[position].append(

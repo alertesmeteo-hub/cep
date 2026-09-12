@@ -133,7 +133,7 @@ def _header_text(meta: SynopticMeta) -> str:
     run = meta.run_time.strftime("%d/%m/%Y %HZ")
     valid = meta.valid_time.strftime("%a %d/%m %HZ")
     return (
-        f"{meta.variable_label} {meta.level_hpa} hPa : temp, géop. / pression  |  "
+        f"{meta.variable_label} {meta.level_hpa} hPa : temp., géop. / pression.  |  "
         f"Run {run}  —  Échéance +{meta.lead_hour:03d} h  —  Validité {valid}"
     )
 
@@ -333,7 +333,7 @@ def render_synoptic_map(
         )
         ax.text(
             0.5, 0.99,
-            f"Géopotentiel {meta.level_hpa} hPa : temp, géop. / pression",
+            f"Géopotentiel {meta.level_hpa} hPa : temp., géop. / pression.",
             transform=ax.transAxes, ha="center", va="top", fontsize=9, bbox=label_box,
         )
         ax.text(
