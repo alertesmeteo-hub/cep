@@ -336,6 +336,11 @@ def render_synoptic_map(
             f"Géopotentiel {meta.level_hpa} hPa : temp, géop. / pression",
             transform=ax.transAxes, ha="center", va="top", fontsize=9, bbox=label_box,
         )
+        ax.text(
+            0.5, 0.095, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
+            color="black", bbox=label_box,
+        )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
         colorbar = fig.colorbar(
             fill, cax=colorbar_axes, orientation="horizontal",
@@ -346,11 +351,6 @@ def render_synoptic_map(
         ax.text(
             0.32, 0.0375, f"Géopotentiel {meta.level_hpa} hPa (gpdam)",
             transform=ax.transAxes, ha="right", va="center", fontsize=8, bbox=label_box,
-        )
-        ax.text(
-            0.99, 0.02, "www.alertes-meteo.com",
-            transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
-            color="black", bbox=label_box,
         )
     else:
         fig.colorbar(
@@ -471,6 +471,11 @@ def render_wind_temp_map(
             f"Température à {meta.level_hpa}hPa\nVent à {meta.level_hpa}hPa (barbules, nœuds)",
             transform=ax.transAxes, ha="center", va="top", fontsize=9, bbox=label_box,
         )
+        ax.text(
+            0.5, 0.095, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
+            color="black", bbox=label_box,
+        )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
         colorbar = fig.colorbar(
             fill, cax=colorbar_axes, orientation="horizontal",
@@ -481,11 +486,6 @@ def render_wind_temp_map(
         ax.text(
             0.32, 0.0375, unit_label,
             transform=ax.transAxes, ha="right", va="center", fontsize=8, bbox=label_box,
-        )
-        ax.text(
-            0.99, 0.02, "www.alertes-meteo.com",
-            transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
-            color="black", bbox=label_box,
         )
     else:
         fig.colorbar(
@@ -583,6 +583,11 @@ def render_wind_speed_map(
             0.5, 0.99, f"Flux à {meta.level_hpa}hPa",
             transform=ax.transAxes, ha="center", va="top", fontsize=10, bbox=label_box,
         )
+        ax.text(
+            0.5, 0.095, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
+            color="black", bbox=label_box,
+        )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
         colorbar = fig.colorbar(
             fill, cax=colorbar_axes, orientation="horizontal", ticks=speed_levels[::2],
@@ -592,11 +597,6 @@ def render_wind_speed_map(
         ax.text(
             0.32, 0.0375, unit_label,
             transform=ax.transAxes, ha="right", va="center", fontsize=8, bbox=label_box,
-        )
-        ax.text(
-            0.99, 0.02, "www.alertes-meteo.com",
-            transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
-            color="black", bbox=label_box,
         )
     else:
         fig.colorbar(

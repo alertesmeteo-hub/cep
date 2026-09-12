@@ -33,7 +33,7 @@ from eccodes import (
 )
 from scipy.ndimage import map_coordinates
 
-from cep_maps import DEFAULT_BOUNDS, CEPMapRenderer
+from cep_maps import DEFAULT_BOUNDS, EUROPE_BOUNDS, CEPMapRenderer
 from synoptic_map import (
     SYNOPTIC_REGIONS,
     SYNOPTIC_STYLES,
@@ -589,10 +589,12 @@ def inverse_mercator(value: np.ndarray) -> np.ndarray:
 class MapSampler:
     """Rééchantillonne la grille CEP par spline bicubique sur Web Mercator."""
 
-    def __init__(self, width: int, height: int) -> None:
+    def __init__(
+        self, width: int, height: int, bounds: dict[str, float] | None = None
+    ) -> None:
         self.width = int(width)
         self.height = int(height)
-        bounds = DEFAULT_BOUNDS
+        bounds = bounds or DEFAULT_BOUNDS
         target_latitudes = inverse_mercator(
             np.linspace(
                 mercator(np.asarray(float(bounds["north"]))),
@@ -640,11 +642,13 @@ class MapSampler:
 def parse_grib_files(
     paths: Iterable[Path],
     grid: NationalGrid,
-    map_sampler: MapSampler | None,
+    map_samplers: dict[str, MapSampler] | None,
     lead_hour: int,
 ) -> dict[str, Any]:
     point_values: dict[str, np.ndarray] = {}
-    map_values: dict[str, np.ndarray] = {}
+    map_values: dict[str, dict[str, np.ndarray]] = {
+        key: {} for key in (map_samplers or {})
+    }
     run_time: datetime | None = None
     valid_time: datetime | None = None
     observed_lead: int | None = None
@@ -667,19 +671,28 @@ def parse_grib_files(
                     if end_step is not None:
                         observed_lead = int(end_step)
                     point_field = grid.extract(gid)
-                    map_field = map_sampler.extract(gid, grid) if map_sampler else np.empty(0)
+                    map_fields = {
+                        key: sampler.extract(gid, grid)
+                        for key, sampler in (map_samplers or {}).items()
+                    }
                     if field in {"precipitation_total_m", "snow_total_m", "snow_depth_m"}:
                         point_field = point_field * 1000.0
-                        map_field = map_field * 1000.0
+                        map_fields = {
+                            key: value * 1000.0 for key, value in map_fields.items()
+                        }
                     elif field in {"cloud_total_fraction", "cloud_low_pct", "cloud_mid_pct", "cloud_high_pct"}:
                         point_field = point_field * 100.0
-                        map_field = map_field * 100.0
+                        map_fields = {
+                            key: value * 100.0 for key, value in map_fields.items()
+                        }
                     elif field == "surface_geopotential":
                         point_field = point_field / 9.80665
-                        map_field = map_field / 9.80665
+                        map_fields = {
+                            key: value / 9.80665 for key, value in map_fields.items()
+                        }
                     point_values[field] = point_field
-                    if map_sampler is not None:
-                        map_values[field] = map_field
+                    for key, value in map_fields.items():
+                        map_values[key][field] = value
                 finally:
                     codes_release(gid)
 
@@ -1456,7 +1469,18 @@ def build_product(
         for code in catalog.departments
     }
     grid = NationalGrid(catalog)
+    natural_earth_directory = (
+        Path(__file__).resolve().parents[1] / "config" / "natural-earth"
+    )
+    department_boundary_path = (
+        Path(__file__).resolve().parents[1]
+        / "config"
+        / "france"
+        / "departements.geojson"
+    )
     map_sampler = MapSampler(MAP_WIDTH, MAP_HEIGHT)
+    map_sampler_europe = MapSampler(MAP_WIDTH, MAP_HEIGHT, bounds=EUROPE_BOUNDS)
+    map_samplers = {"france": map_sampler, "europe": map_sampler_europe}
     map_renderer = CEPMapRenderer(
         np.empty(0),
         np.empty(0),
@@ -1466,22 +1490,31 @@ def build_product(
         france_latitudes=catalog.point_latitudes,
         france_longitudes=catalog.point_longitudes,
         france_departments=catalog.point_departments,
-        boundary_directory=(
-            Path(__file__).resolve().parents[1] / "config" / "natural-earth"
-        ),
-        department_boundary_path=(
-            Path(__file__).resolve().parents[1]
-            / "config"
-            / "france"
-            / "departements.geojson"
-        ),
+        boundary_directory=natural_earth_directory,
+        department_boundary_path=department_boundary_path,
+        pregridded=True,
+    )
+    map_renderer_europe = CEPMapRenderer(
+        np.empty(0),
+        np.empty(0),
+        result_directory / "maps-europe",
+        width=MAP_WIDTH,
+        height=MAP_HEIGHT,
+        bounds=EUROPE_BOUNDS,
+        france_latitudes=catalog.point_latitudes,
+        france_longitudes=catalog.point_longitudes,
+        france_departments=catalog.point_departments,
+        boundary_directory=natural_earth_directory,
+        department_boundary_path=department_boundary_path,
         pregridded=True,
     )
 
     point_altitude: np.ndarray | None = None
     map_altitude: np.ndarray | None = None
+    map_altitude_europe: np.ndarray | None = None
     point_state: dict[str, np.ndarray] = {}
     map_state: dict[str, np.ndarray] = {}
+    map_state_europe: dict[str, np.ndarray] = {}
     model_run = run_hint
     source_bytes = 0
 
@@ -1508,15 +1541,24 @@ def build_product(
                     len(steps),
                     lead,
                 )
-                step = parse_grib_files(current_paths, grid, map_sampler if lead <= 240 else None, lead)
+                step = parse_grib_files(
+                    current_paths, grid, map_samplers if lead <= 240 else None, lead
+                )
                 model_run = model_run or step["run_time"]
                 if lead == 0:
                     point_altitude = step["values"].get("surface_geopotential")
-                    map_altitude = step["map_values"].get("surface_geopotential")
+                    map_altitude = step["map_values"].get("france", {}).get(
+                        "surface_geopotential"
+                    )
+                    map_altitude_europe = step["map_values"].get("europe", {}).get(
+                        "surface_geopotential"
+                    )
                     if point_altitude is None:
                         point_altitude = np.zeros(len(catalog.model_indexes))
                     if map_altitude is None:
                         map_altitude = np.zeros((MAP_HEIGHT, MAP_WIDTH))
+                    if map_altitude_europe is None:
+                        map_altitude_europe = np.zeros((MAP_HEIGHT, MAP_WIDTH))
                     for department in catalog.departments.values():
                         for position, global_id in enumerate(department.global_point_ids):
                             department.points[position].append(
@@ -1544,14 +1586,18 @@ def build_product(
                                         chosen_local = local_id
                                         break
                             department.communes[commune_position][6] = chosen_local
-                assert point_altitude is not None and map_altitude is not None
+                assert (
+                    point_altitude is not None
+                    and map_altitude is not None
+                    and map_altitude_europe is not None
+                )
                 transformed, point_state = transform_step(
                     step["values"], point_altitude, point_state, lead
                 )
                 # Au-delà de J+10 : uniquement les tableaux, aucune carte supplémentaire.
                 if lead <= 240:
                     map_transformed, map_state = transform_step(
-                        step["map_values"], map_altitude, map_state, lead
+                        step["map_values"]["france"], map_altitude, map_state, lead
                     )
                     map_fields = {
                         key: values
@@ -1562,6 +1608,22 @@ def build_product(
                         lead_hour=lead,
                         valid_time=step["valid_time"],
                         fields=map_fields,
+                    )
+                    map_transformed_europe, map_state_europe = transform_step(
+                        step["map_values"]["europe"],
+                        map_altitude_europe,
+                        map_state_europe,
+                        lead,
+                    )
+                    map_fields_europe = {
+                        key: values
+                        for key, values in map_transformed_europe.items()
+                        if key in MAP_FIELDS
+                    }
+                    map_renderer_europe.render_step(
+                        lead_hour=lead,
+                        valid_time=step["valid_time"],
+                        fields=map_fields_europe,
                     )
                 if lead <= SYNOPTIC_MAX_LEAD_HOUR:
                     LOGGER.info("Cartes synoptiques +%03d h", lead)
@@ -1651,6 +1713,11 @@ def build_product(
     places_path = result_directory / "maps" / "communes.json"
     places_count = write_map_places(catalog, places_path)
     map_manifest = map_renderer.write_manifest(
+        generated_at=generated_at,
+        run_time=run_time,
+        places_path="maps/communes.json",
+    )
+    map_manifest_europe = map_renderer_europe.write_manifest(
         generated_at=generated_at,
         run_time=run_time,
         places_path="maps/communes.json",
@@ -1756,6 +1823,14 @@ def build_product(
             "manifest": "maps/index.json",
             "layers": len(map_manifest["layers"]),
             "steps": len(map_manifest["steps"]),
+            "places": places_count,
+        },
+        "maps_europe": {
+            "status": "ok",
+            "module_version": map_manifest_europe["module_version"],
+            "manifest": "maps-europe/index.json",
+            "layers": len(map_manifest_europe["layers"]),
+            "steps": len(map_manifest_europe["steps"]),
             "places": places_count,
         },
         "synoptic": {

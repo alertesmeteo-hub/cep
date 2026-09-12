@@ -56,6 +56,12 @@ DEFAULT_BOUNDS = {
     "north": 57.0,
     "east": 18.0,
 }
+EUROPE_BOUNDS = {
+    "south": 28.0,
+    "west": -45.0,
+    "north": 61.0,
+    "east": 41.0,
+}
 
 
 def _iter_shapefile_parts(path: Path):
@@ -795,6 +801,7 @@ class CEPMapRenderer:
 
         self.output_directory = Path(output_directory)
         self.output_directory.mkdir(parents=True, exist_ok=True)
+        self.manifest_prefix = self.output_directory.name
         self.width = int(width)
         self.height = int(height)
         self.bounds = dict(bounds or DEFAULT_BOUNDS)
@@ -1554,7 +1561,7 @@ class CEPMapRenderer:
                 destination,
                 np.asarray(pressure) if pressure is not None else None,
             )
-            vector_path = f"maps/vectors/vent/{destination.name}"
+            vector_path = f"{self.manifest_prefix}/vectors/vent/{destination.name}"
             for layer_key, field_name in (
                 ("vent", "wind_speed_kmh"),
                 ("rafales", "wind_gust_kmh"),
@@ -1582,7 +1589,7 @@ class CEPMapRenderer:
             destination = destination_directory / f"{file_stem}.webp"
             image = self._image_from_field(field, spec)
             image.save(destination, "WEBP", quality=86, method=5)
-            files[spec.key] = f"maps/{spec.key}/{destination.name}"
+            files[spec.key] = f"{self.manifest_prefix}/{spec.key}/{destination.name}"
             probe_destination = (
                 self.output_directory
                 / "values"
@@ -1591,7 +1598,7 @@ class CEPMapRenderer:
             )
             self._write_probe_field(field, spec, probe_destination)
             probes[spec.key] = (
-                f"maps/values/{spec.key}/{probe_destination.name}"
+                f"{self.manifest_prefix}/values/{spec.key}/{probe_destination.name}"
             )
             if spec.field in STATIC_FIELDS:
                 self._static_assets[spec.key] = (
@@ -1654,8 +1661,8 @@ class CEPMapRenderer:
             "bounds": self.bounds,
             "width": self.width,
             "height": self.height,
-            "background": "maps/fond.webp",
-            "overlay": "maps/frontieres.svg",
+            "background": f"{self.manifest_prefix}/fond.webp",
+            "overlay": f"{self.manifest_prefix}/frontieres.svg",
             "layers": layers,
             "steps": self.steps,
         }
