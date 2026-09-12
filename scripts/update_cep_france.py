@@ -39,8 +39,10 @@ from synoptic_map import (
     SYNOPTIC_STYLES,
     SynopticGrid,
     SynopticMeta,
+    WindSpeedGrid,
     WindTempGrid,
     render_synoptic_map,
+    render_wind_speed_map,
     render_wind_temp_map,
 )
 
@@ -1401,6 +1403,40 @@ def build_wind_temp_map(
     )
 
 
+def build_wind_speed_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte de flux (vitesse + lignes de flux) à 850 hPa.
+
+    Réutilise u/v @ 850 hPa déjà présents dans le fichier isobare téléchargé
+    par `retrieve_ifs_step`, comme `build_wind_temp_map`.
+    """
+    extent = SYNOPTIC_REGIONS[region]
+
+    u_native = extract_native_field(combined_grib, "u", level_hpa=WIND_TEMP_LEVEL_HPA)
+    v_native = extract_native_field(combined_grib, "v", level_hpa=WIND_TEMP_LEVEL_HPA)
+    latitudes, longitudes, wind_u = native_lonlat_subset(u_native, extent)
+    _, _, wind_v = native_lonlat_subset(v_native, extent)
+    grid = WindSpeedGrid(
+        latitudes=latitudes, longitudes=longitudes, wind_u_ms=wind_u, wind_v_ms=wind_v,
+    )
+    meta = SynopticMeta(
+        level_hpa=WIND_TEMP_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Vent",
+    )
+    return render_wind_speed_map(
+        grid, meta, destination, extent=extent, style=SYNOPTIC_STYLES[region]
+    )
+
+
 def build_product(
     client: Client,
     catalog: NationalCatalog,
@@ -1453,6 +1489,8 @@ def build_product(
     synoptic_steps: list[dict[str, Any]] = []
     wind_temp_directory = result_directory / "maps" / "synoptic-wind850"
     wind_temp_steps: list[dict[str, Any]] = []
+    wind_speed_directory = result_directory / "maps" / "synoptic-flow850"
+    wind_speed_steps: list[dict[str, Any]] = []
 
     try:
         steps = forecast_steps(forecast_hours)
@@ -1567,6 +1605,26 @@ def build_product(
                             "files": wind_temp_files,
                         }
                     )
+                    LOGGER.info("Cartes de flux 850 hPa +%03d h", lead)
+                    wind_speed_files: dict[str, str] = {}
+                    for region in SYNOPTIC_REGIONS:
+                        relative = f"maps/synoptic-flow850/{region}/flow850-{lead:03d}h.png"
+                        build_wind_speed_map(
+                            combined_grib=destination,
+                            run_time=model_run,
+                            lead_hour=lead,
+                            valid_time=step["valid_time"],
+                            destination=result_directory / relative,
+                            region=region,
+                        )
+                        wind_speed_files[region] = relative
+                    wind_speed_steps.append(
+                        {
+                            "lead_hour": lead,
+                            "valid_time": iso_utc(step["valid_time"]),
+                            "files": wind_speed_files,
+                        }
+                    )
                 iso_time = iso_utc(step["valid_time"])
                 for code, department in catalog.departments.items():
                     line = [
@@ -1628,6 +1686,19 @@ def build_product(
         wind_temp_directory.mkdir(parents=True, exist_ok=True)
         with (wind_temp_directory / "index.json").open("w", encoding="utf-8") as handle:
             json.dump(wind_temp_manifest, handle, ensure_ascii=False, separators=(",", ":"))
+            handle.write("\n")
+
+    wind_speed_manifest = {
+        "level_hpa": WIND_TEMP_LEVEL_HPA,
+        "variable": "wind_speed",
+        "run_time": run_time,
+        "regions": list(SYNOPTIC_REGIONS),
+        "steps": wind_speed_steps,
+    }
+    if wind_speed_steps:
+        wind_speed_directory.mkdir(parents=True, exist_ok=True)
+        with (wind_speed_directory / "index.json").open("w", encoding="utf-8") as handle:
+            json.dump(wind_speed_manifest, handle, ensure_ascii=False, separators=(",", ":"))
             handle.write("\n")
 
     model = {
@@ -1698,6 +1769,12 @@ def build_product(
             "level_hpa": WIND_TEMP_LEVEL_HPA,
             "manifest": "maps/synoptic-wind850/index.json",
             "steps": len(wind_temp_steps),
+        },
+        "synoptic_flow850": {
+            "status": "ok" if wind_speed_steps else "unavailable",
+            "level_hpa": WIND_TEMP_LEVEL_HPA,
+            "manifest": "maps/synoptic-flow850/index.json",
+            "steps": len(wind_speed_steps),
         },
         "departments": department_index,
         "total_department_bytes": total_size,

@@ -133,7 +133,7 @@ def _header_text(meta: SynopticMeta) -> str:
     run = meta.run_time.strftime("%d/%m/%Y %HZ")
     valid = meta.valid_time.strftime("%a %d/%m %HZ")
     return (
-        f"{meta.variable_label} {meta.level_hpa} hPa & pression au niveau de la mer  |  "
+        f"{meta.variable_label} {meta.level_hpa} hPa : temp, géop. / pression  |  "
         f"Run {run}  —  Échéance +{meta.lead_hour:03d} h  —  Validité {valid}"
     )
 
@@ -333,7 +333,7 @@ def render_synoptic_map(
         )
         ax.text(
             0.5, 0.99,
-            f"Géopotentiel à {meta.level_hpa}hPa\nPression au niveau de la mer",
+            f"Géopotentiel {meta.level_hpa} hPa : temp, géop. / pression",
             transform=ax.transAxes, ha="center", va="top", fontsize=9, bbox=label_box,
         )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
@@ -377,6 +377,16 @@ TEMPERATURE_850_CMAP = LinearSegmentedColormap.from_list(
     [
         "#321253", "#423c9c", "#326eb7", "#3da6cf", "#5ac7ad",
         "#bcd84e", "#f0a33a", "#d6403e", "#701d4c",
+    ],
+)
+
+# Palette vitesse de vent 850 hPa reprise des cartes interactives existantes
+# (cep_maps.py, layer "vent_850"), pour rester cohérent sur tout le site.
+WIND_SPEED_850_CMAP = LinearSegmentedColormap.from_list(
+    "wind_speed_850",
+    [
+        "#eef7ea", "#a7db8d", "#43b894", "#347cc3", "#6558b8",
+        "#a43e94", "#d63c57", "#7e1736", "#35132b",
     ],
 )
 
@@ -498,4 +508,114 @@ def render_wind_temp_map(
     fig.savefig(destination, format="png")
     plt.close(fig)
     LOGGER.info("Carte vent/température écrite : %s", destination)
+    return destination
+
+
+@dataclass(frozen=True)
+class WindSpeedGrid:
+    """Grille lat/lon régulière portant le vent (composantes) à un niveau."""
+
+    latitudes: np.ndarray
+    longitudes: np.ndarray
+    wind_u_ms: np.ndarray  # 2D (nj, ni)
+    wind_v_ms: np.ndarray  # 2D (nj, ni)
+
+    def __post_init__(self) -> None:
+        expected = (len(self.latitudes), len(self.longitudes))
+        for name in ("wind_u_ms", "wind_v_ms"):
+            if getattr(self, name).shape != expected:
+                raise ValueError(
+                    f"{name} a la forme {getattr(self, name).shape}, attendu {expected}"
+                )
+
+
+def render_wind_speed_map(
+    grid: WindSpeedGrid,
+    meta: SynopticMeta,
+    destination: Path,
+    extent: tuple[float, float, float, float] = DEFAULT_EXTENT,
+    figsize: tuple[float, float] = (11.0, 9.0),
+    dpi: int = 130,
+    style: str = "classic",
+) -> Path:
+    """Trace la vitesse du vent (fond coloré, km/h) avec lignes de flux.
+
+    `grid.wind_u_ms`/`wind_v_ms` en m/s. `meta.level_hpa` indique le niveau
+    (typiquement 850 hPa). Style "flux" façon météociel/wetterzentrale.
+    """
+    fig, ax, data_crs, infoclimat = _setup_map_axes(extent, style, figsize, dpi)
+
+    speed_kmh = np.hypot(grid.wind_u_ms, grid.wind_v_ms) * 3.6
+    speed_high = max(20.0, float(np.ceil(np.nanmax(speed_kmh) / 10.0) * 10.0))
+    speed_levels = np.arange(0, speed_high + 10.0, 10.0)
+    fill = ax.contourf(
+        grid.longitudes, grid.latitudes, speed_kmh,
+        levels=speed_levels, cmap=WIND_SPEED_850_CMAP, transform=data_crs, extend="max",
+    )
+
+    ax.streamplot(
+        grid.longitudes, grid.latitudes, grid.wind_u_ms, grid.wind_v_ms,
+        transform=data_crs, color="black", density=2.2, linewidth=0.6, arrowsize=0.8,
+    )
+
+    _add_basemap(ax)
+
+    unit_label = f"Vent {meta.level_hpa} hPa (km/h)"
+    if infoclimat:
+        run = f"{meta.run_time.strftime('%HZ')} {_format_french_date(meta.run_time)}"
+        valid = f"{_format_french_date(meta.valid_time, with_weekday=True)} {meta.valid_time.strftime('%H')}H UTC"
+        label_box = {"facecolor": "white", "alpha": 0.75, "edgecolor": "none", "pad": 4}
+        ax.text(
+            0.01, 0.99, f"Run ECMWF/CEP 0,25°\n{run}",
+            transform=ax.transAxes, ha="left", va="top", fontsize=9, bbox=label_box,
+        )
+        ax.text(
+            0.99, 0.99, f"Échéance : {valid}",
+            transform=ax.transAxes, ha="right", va="top", fontsize=10,
+            fontweight="bold", color="#cc0000", bbox=label_box,
+        )
+        ax.text(
+            0.99, 0.935, f"+{meta.lead_hour}H",
+            transform=ax.transAxes, ha="right", va="top", fontsize=13,
+            fontweight="bold", color="#cc0000", bbox=label_box,
+        )
+        ax.text(
+            0.5, 0.99, f"Flux à {meta.level_hpa}hPa",
+            transform=ax.transAxes, ha="center", va="top", fontsize=10, bbox=label_box,
+        )
+        colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
+        colorbar = fig.colorbar(
+            fill, cax=colorbar_axes, orientation="horizontal", ticks=speed_levels[::2],
+        )
+        colorbar.ax.tick_params(labelsize=8, colors="black", labeltop=True, labelbottom=False)
+        colorbar_axes.set_facecolor("white")
+        ax.text(
+            0.32, 0.0375, unit_label,
+            transform=ax.transAxes, ha="right", va="center", fontsize=8, bbox=label_box,
+        )
+        ax.text(
+            0.99, 0.02, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
+            color="black", bbox=label_box,
+        )
+    else:
+        fig.colorbar(
+            fill, ax=ax, orientation="vertical", fraction=0.025, pad=0.01, label=unit_label,
+        )
+        run = meta.run_time.strftime("%d/%m/%Y %HZ")
+        valid = meta.valid_time.strftime("%a %d/%m %HZ")
+        fig.suptitle(
+            f"Flux à {meta.level_hpa} hPa  |  Run {run}  —  "
+            f"Échéance +{meta.lead_hour:03d} h  —  Validité {valid}",
+            fontsize=10, y=0.985,
+        )
+        fig.text(
+            0.5, 0.015, "www.alertes-meteo.com",
+            ha="center", va="bottom", fontsize=9, color="dimgray",
+        )
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(destination, format="png")
+    plt.close(fig)
+    LOGGER.info("Carte de flux écrite : %s", destination)
     return destination
