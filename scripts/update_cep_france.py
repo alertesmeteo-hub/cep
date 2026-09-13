@@ -49,15 +49,17 @@ from synoptic_map import (
     TEMPERATURE_850_CMAP,
     WindSpeedGrid,
     WindTempGrid,
+    downsample_for_hover,
     render_scalar_field_map,
     render_synoptic_map,
     render_wind_speed_map,
     render_wind_temp_map,
+    synoptic_axes_geometry,
 )
 
 
 LOGGER = logging.getLogger("cep.france")
-PIPELINE_VERSION = "1.7.0"
+PIPELINE_VERSION = "1.7.1"
 DATASET_PAGE = "https://www.ecmwf.int/en/forecasts/datasets/open-data"
 DEFAULT_CURRENT_METADATA_URL = (
     "https://raw.githubusercontent.com/alertesmeteo-hub/"
@@ -1397,6 +1399,28 @@ def native_lonlat_subset(
     return latitudes[rows], longitudes[columns][order], subset[:, order]
 
 
+def _fill_hover_sink(
+    hover_sink: dict | None,
+    latitudes: np.ndarray,
+    longitudes: np.ndarray,
+    fields: dict[str, tuple[np.ndarray, str]],
+) -> None:
+    """Remplit `hover_sink` (si fourni) avec les champs natifs sous-échantillonnés
+    nécessaires au survol côté client (voir `_accumulate_hover` plus bas, qui
+    consomme ce dict pour construire values.json). `fields` associe un nom de
+    champ à (tableau 2D lat/lon régulier, unité affichée par le JS)."""
+    if hover_sink is None:
+        return
+    out_fields: dict[str, dict] = {}
+    lat_ds = lon_ds = None
+    for name, (array, unit) in fields.items():
+        lat_ds, lon_ds, array_ds = downsample_for_hover(array, latitudes, longitudes)
+        out_fields[name] = {"unit": unit, "array": array_ds}
+    hover_sink["latitudes"] = lat_ds
+    hover_sink["longitudes"] = lon_ds
+    hover_sink["fields"] = out_fields
+
+
 def build_synoptic_map(
     combined_grib: Path,
     run_time: datetime,
@@ -1404,6 +1428,7 @@ def build_synoptic_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte synoptique gh500 + MSLP pour une échéance et une région.
 
@@ -1417,6 +1442,12 @@ def build_synoptic_map(
     gh_native = extract_native_field(combined_grib, "gh", level_hpa=SYNOPTIC_LEVEL_HPA)
     latitudes, longitudes, mslp = native_lonlat_subset(mslp_native, extent)
     _, _, gh = native_lonlat_subset(gh_native, extent)
+    gh_dam = gh / 10.0
+    mslp_hpa = mslp / 100.0
+    _fill_hover_sink(
+        hover_sink, latitudes, longitudes,
+        {"gh_dam": (gh_dam, "dam"), "mslp_hpa": (mslp_hpa, "hPa")},
+    )
     grid = SynopticGrid(
         latitudes=latitudes,
         longitudes=longitudes,
@@ -1445,6 +1476,7 @@ def build_wind_temp_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte température + vent à 850 hPa pour une échéance/région.
 
@@ -1460,6 +1492,13 @@ def build_wind_temp_map(
     latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
     _, _, wind_u = native_lonlat_subset(u_native, extent)
     _, _, wind_v = native_lonlat_subset(v_native, extent)
+    _fill_hover_sink(
+        hover_sink, latitudes, longitudes,
+        {
+            "temperature_c": (temperature, "°C"),
+            "wind_speed_kmh": (np.hypot(wind_u, wind_v) * 3.6, "km/h"),
+        },
+    )
     grid = WindTempGrid(
         latitudes=latitudes,
         longitudes=longitudes,
@@ -1486,6 +1525,7 @@ def build_wind_speed_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte de flux (vitesse + lignes de flux) à 850 hPa.
 
@@ -1498,6 +1538,10 @@ def build_wind_speed_map(
     v_native = extract_native_field(combined_grib, "v", level_hpa=WIND_TEMP_LEVEL_HPA)
     latitudes, longitudes, wind_u = native_lonlat_subset(u_native, extent)
     _, _, wind_v = native_lonlat_subset(v_native, extent)
+    _fill_hover_sink(
+        hover_sink, latitudes, longitudes,
+        {"wind_speed_kmh": (np.hypot(wind_u, wind_v) * 3.6, "km/h")},
+    )
     grid = WindSpeedGrid(
         latitudes=latitudes, longitudes=longitudes, wind_u_ms=wind_u, wind_v_ms=wind_v,
     )
@@ -1564,11 +1608,13 @@ def build_temp500_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte de température à 500 hPa (fond coloré seul)."""
     extent = SYNOPTIC_REGIONS[region]
     t_native = extract_native_field(combined_grib, "t", level_hpa=TEMP500_LEVEL_HPA) - 273.15
     latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
+    _fill_hover_sink(hover_sink, latitudes, longitudes, {"value": (temperature, "°C")})
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=temperature)
     meta = SynopticMeta(
         level_hpa=TEMP500_LEVEL_HPA,
@@ -1593,11 +1639,13 @@ def build_temp850_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte de température à 850 hPa (fond coloré seul)."""
     extent = SYNOPTIC_REGIONS[region]
     t_native = extract_native_field(combined_grib, "t", level_hpa=WIND_TEMP_LEVEL_HPA) - 273.15
     latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
+    _fill_hover_sink(hover_sink, latitudes, longitudes, {"value": (temperature, "°C")})
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=temperature)
     meta = SynopticMeta(
         level_hpa=WIND_TEMP_LEVEL_HPA,
@@ -1622,6 +1670,7 @@ def build_temp10_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte de température à 10 hPa (stratosphère basse).
 
@@ -1631,6 +1680,7 @@ def build_temp10_map(
     extent = SYNOPTIC_REGIONS[region]
     t_native = extract_native_field(combined_grib, "t", level_hpa=TEMP10_LEVEL_HPA) - 273.15
     latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
+    _fill_hover_sink(hover_sink, latitudes, longitudes, {"value": (temperature, "°C")})
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=temperature)
     meta = SynopticMeta(
         level_hpa=TEMP10_LEVEL_HPA,
@@ -1655,6 +1705,7 @@ def build_tempminmax_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte des températures 2 m max (fond coloré) et min
     (isolignes en pointillé), issues de `mx2t3`/`mn2t3`.
@@ -1676,6 +1727,10 @@ def build_tempminmax_map(
         tmin_native = extract_native_field(combined_grib, min_name) - 273.15
     latitudes, longitudes, tmax = native_lonlat_subset(tmax_native, extent)
     _, _, tmin = native_lonlat_subset(tmin_native, extent)
+    _fill_hover_sink(
+        hover_sink, latitudes, longitudes,
+        {"value": (tmax, "°C"), "value_secondary": (tmin, "°C")},
+    )
     grid = ScalarFieldGrid(
         latitudes=latitudes, longitudes=longitudes, values=tmax, values_secondary=tmin,
     )
@@ -1702,6 +1757,7 @@ def build_thetae_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte de theta-E (température potentielle équivalente) à
     850 hPa, calculée à partir de `t` et `r` déjà téléchargés."""
@@ -1711,6 +1767,7 @@ def build_thetae_map(
     latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
     _, _, humidity = native_lonlat_subset(r_native, extent)
     theta_e, _theta_w = compute_theta_e_theta_w(temperature, humidity, WIND_TEMP_LEVEL_HPA)
+    _fill_hover_sink(hover_sink, latitudes, longitudes, {"value": (theta_e, "°C")})
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=theta_e)
     meta = SynopticMeta(
         level_hpa=WIND_TEMP_LEVEL_HPA,
@@ -1735,6 +1792,7 @@ def build_thetaw_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte de theta-W (température potentielle du thermomètre
     mouillé) à 850 hPa, calculée à partir de `t` et `r` déjà téléchargés."""
@@ -1744,6 +1802,7 @@ def build_thetaw_map(
     latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
     _, _, humidity = native_lonlat_subset(r_native, extent)
     _theta_e, theta_w = compute_theta_e_theta_w(temperature, humidity, WIND_TEMP_LEVEL_HPA)
+    _fill_hover_sink(hover_sink, latitudes, longitudes, {"value": (theta_w, "°C")})
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=theta_w)
     meta = SynopticMeta(
         level_hpa=WIND_TEMP_LEVEL_HPA,
@@ -1771,11 +1830,13 @@ def build_temp2m_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte de température à 2 m (fond coloré seul), champ `2t`."""
     extent = SYNOPTIC_REGIONS[region]
     t_native = extract_native_field(combined_grib, "2t") - 273.15
     latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
+    _fill_hover_sink(hover_sink, latitudes, longitudes, {"value": (temperature, "°C")})
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=temperature)
     meta = SynopticMeta(
         level_hpa=SURFACE_LEVEL_HPA,
@@ -1800,11 +1861,13 @@ def build_dewpoint2m_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte de point de rosée à 2 m (fond coloré seul), champ `2d`."""
     extent = SYNOPTIC_REGIONS[region]
     td_native = extract_native_field(combined_grib, "2d") - 273.15
     latitudes, longitudes, dewpoint = native_lonlat_subset(td_native, extent)
+    _fill_hover_sink(hover_sink, latitudes, longitudes, {"value": (dewpoint, "°C")})
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=dewpoint)
     meta = SynopticMeta(
         level_hpa=SURFACE_LEVEL_HPA,
@@ -1829,6 +1892,7 @@ def build_precip_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path | None:
     """Génère la carte des précipitations totales cumulées depuis le run
     (champ `tp`, en mètres -> mm).
@@ -1844,6 +1908,7 @@ def build_precip_map(
     tp_native = extract_native_field(combined_grib, "tp") * 1000.0
     tp_native = np.clip(tp_native, 0.0, None)
     latitudes, longitudes, precipitation = native_lonlat_subset(tp_native, extent)
+    _fill_hover_sink(hover_sink, latitudes, longitudes, {"value": (precipitation, "mm")})
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=precipitation)
     meta = SynopticMeta(
         level_hpa=SURFACE_LEVEL_HPA,
@@ -1868,6 +1933,7 @@ def build_snow_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path | None:
     """Génère la carte de hauteur de neige équivalent eau cumulée depuis le
     run (champ `sf`, en mètres -> mm équivalent eau, même échelle que `tp`).
@@ -1882,6 +1948,7 @@ def build_snow_map(
     sf_native = extract_native_field(combined_grib, "sf") * 1000.0
     sf_native = np.clip(sf_native, 0.0, None)
     latitudes, longitudes, snow = native_lonlat_subset(sf_native, extent)
+    _fill_hover_sink(hover_sink, latitudes, longitudes, {"value": (snow, "mm")})
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=snow)
     meta = SynopticMeta(
         level_hpa=SURFACE_LEVEL_HPA,
@@ -1906,6 +1973,7 @@ def build_wind10m_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte de vent moyen à 10 m (vitesse + lignes de flux),
     champs `10u`/`10v`. Même rendu que le flux 850 hPa (`render_wind_speed_map`),
@@ -1915,6 +1983,10 @@ def build_wind10m_map(
     v_native = extract_native_field(combined_grib, "10v")
     latitudes, longitudes, wind_u = native_lonlat_subset(u_native, extent)
     _, _, wind_v = native_lonlat_subset(v_native, extent)
+    _fill_hover_sink(
+        hover_sink, latitudes, longitudes,
+        {"wind_speed_kmh": (np.hypot(wind_u, wind_v) * 3.6, "km/h")},
+    )
     grid = WindSpeedGrid(
         latitudes=latitudes, longitudes=longitudes, wind_u_ms=wind_u, wind_v_ms=wind_v,
     )
@@ -1938,6 +2010,7 @@ def build_gusts10m_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte des rafales à 10 m (fond coloré seul, champ `10fg`
     ou `10fg3` selon l'échéance, voir `gusts10m_param`, en m/s -> km/h).
@@ -1946,6 +2019,7 @@ def build_gusts10m_map(
     extent = SYNOPTIC_REGIONS[region]
     gust_native = extract_native_field(combined_grib, gusts10m_param(lead_hour)) * 3.6
     latitudes, longitudes, gust = native_lonlat_subset(gust_native, extent)
+    _fill_hover_sink(hover_sink, latitudes, longitudes, {"value": (gust, "km/h")})
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=gust)
     meta = SynopticMeta(
         level_hpa=SURFACE_LEVEL_HPA,
@@ -1970,6 +2044,7 @@ def build_mucape_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte de MUCAPE instantanée (fond coloré seul, champ
     `mucape`, déjà en J/kg, pas de conversion)."""
@@ -1977,6 +2052,7 @@ def build_mucape_map(
     cape_native = extract_native_field(combined_grib, "mucape")
     cape_native = np.clip(cape_native, 0.0, None)
     latitudes, longitudes, cape = native_lonlat_subset(cape_native, extent)
+    _fill_hover_sink(hover_sink, latitudes, longitudes, {"value": (cape, "J/kg")})
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=cape)
     meta = SynopticMeta(
         level_hpa=SURFACE_LEVEL_HPA,
@@ -2001,6 +2077,7 @@ def build_cloudcover_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte de couverture nuageuse totale (fond coloré seul,
     champ `tcc`). Convertit en % si le GRIB livre une fraction 0-1."""
@@ -2010,6 +2087,7 @@ def build_cloudcover_map(
         tcc_native = tcc_native * 100.0
     tcc_native = np.clip(tcc_native, 0.0, 100.0)
     latitudes, longitudes, cloud_cover = native_lonlat_subset(tcc_native, extent)
+    _fill_hover_sink(hover_sink, latitudes, longitudes, {"value": (cloud_cover, "%")})
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=cloud_cover)
     meta = SynopticMeta(
         level_hpa=SURFACE_LEVEL_HPA,
@@ -2034,6 +2112,7 @@ def build_mslp_map(
     valid_time: datetime,
     destination: Path,
     region: str = "france",
+    hover_sink: dict | None = None,
 ) -> Path:
     """Génère la carte de pression au niveau de la mer seule (isobares
     blanches labellisées sur fond coloré), sans géopotentiel — réutilise le
@@ -2041,6 +2120,7 @@ def build_mslp_map(
     extent = SYNOPTIC_REGIONS[region]
     mslp_native = extract_native_field(combined_grib, "msl") / 100.0
     latitudes, longitudes, mslp_hpa = native_lonlat_subset(mslp_native, extent)
+    _fill_hover_sink(hover_sink, latitudes, longitudes, {"value": (mslp_hpa, "hPa")})
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=mslp_hpa)
     meta = SynopticMeta(
         level_hpa=SURFACE_LEVEL_HPA,
@@ -2165,6 +2245,40 @@ def build_product(
         key: [] for key in NEW_SYNOPTIC_PRODUCTS
     }
 
+    # Valeurs au survol (values.json) : un accumulateur par (produit, région),
+    # rempli à chaque échéance via `_fill_hover_sink` puis écrit une seule
+    # fois à la fin (voir `_accumulate_hover` et l'écriture après la boucle).
+    hover_values: dict[tuple[str, str], dict[str, Any]] = {}
+
+    def _accumulate_hover(
+        product_key: str, region: str, lead_hour: int, hover_sink: dict[str, Any]
+    ) -> None:
+        if not hover_sink:
+            return
+        state_key = (product_key, region)
+        state = hover_values.get(state_key)
+        if state is None:
+            axes_bbox, extent_actual = synoptic_axes_geometry(
+                SYNOPTIC_REGIONS[region], SYNOPTIC_STYLES[region]
+            )
+            state = {
+                "axes_bbox": axes_bbox,
+                "extent": extent_actual,
+                "latitudes": [round(float(v), 3) for v in hover_sink["latitudes"]],
+                "longitudes": [round(float(v), 3) for v in hover_sink["longitudes"]],
+                "fields": {
+                    name: {"unit": field["unit"], "steps": {}}
+                    for name, field in hover_sink["fields"].items()
+                },
+            }
+            hover_values[state_key] = state
+        lead_key = f"{lead_hour:03d}"
+        for name, field in hover_sink["fields"].items():
+            state["fields"][name]["steps"][lead_key] = [
+                [None if not np.isfinite(value) else round(float(value), 1) for value in row]
+                for row in field["array"]
+            ]
+
     try:
         steps = forecast_steps(forecast_hours)
         for step_number, lead in enumerate(steps):
@@ -2272,6 +2386,7 @@ def build_product(
                     step_files: dict[str, str] = {}
                     for region in SYNOPTIC_REGIONS:
                         relative = f"maps/synoptic/{region}/gh500-{lead:03d}h.png"
+                        hover_sink: dict[str, Any] = {}
                         build_synoptic_map(
                             combined_grib=destination,
                             run_time=model_run,
@@ -2279,7 +2394,9 @@ def build_product(
                             valid_time=step["valid_time"],
                             destination=result_directory / relative,
                             region=region,
+                            hover_sink=hover_sink,
                         )
+                        _accumulate_hover("gh500", region, lead, hover_sink)
                         step_files[region] = relative
                     synoptic_steps.append(
                         {
@@ -2293,6 +2410,7 @@ def build_product(
                     wind_temp_files: dict[str, str] = {}
                     for region in SYNOPTIC_REGIONS:
                         relative = f"maps/synoptic-wind850/{region}/wind850-{lead:03d}h.png"
+                        hover_sink = {}
                         build_wind_temp_map(
                             combined_grib=destination,
                             run_time=model_run,
@@ -2300,7 +2418,9 @@ def build_product(
                             valid_time=step["valid_time"],
                             destination=result_directory / relative,
                             region=region,
+                            hover_sink=hover_sink,
                         )
+                        _accumulate_hover("wind850", region, lead, hover_sink)
                         wind_temp_files[region] = relative
                     wind_temp_steps.append(
                         {
@@ -2313,6 +2433,7 @@ def build_product(
                     wind_speed_files: dict[str, str] = {}
                     for region in SYNOPTIC_REGIONS:
                         relative = f"maps/synoptic-flow850/{region}/flow850-{lead:03d}h.png"
+                        hover_sink = {}
                         build_wind_speed_map(
                             combined_grib=destination,
                             run_time=model_run,
@@ -2320,7 +2441,9 @@ def build_product(
                             valid_time=step["valid_time"],
                             destination=result_directory / relative,
                             region=region,
+                            hover_sink=hover_sink,
                         )
+                        _accumulate_hover("flow850", region, lead, hover_sink)
                         wind_speed_files[region] = relative
                     wind_speed_steps.append(
                         {
@@ -2339,6 +2462,7 @@ def build_product(
                                 f"maps/synoptic-{product_key}/{region}/"
                                 f"{product_key}-{lead:03d}h.png"
                             )
+                            hover_sink = {}
                             written = builder(
                                 combined_grib=destination,
                                 run_time=model_run,
@@ -2346,6 +2470,7 @@ def build_product(
                                 valid_time=step["valid_time"],
                                 destination=result_directory / relative,
                                 region=region,
+                                hover_sink=hover_sink,
                             )
                             # Un builder peut retourner None pour signaler
                             # qu'il n'y a rien à afficher à cette échéance
@@ -2354,6 +2479,7 @@ def build_product(
                             # pour ce produit sans écrire de fichier.
                             if written is None:
                                 continue
+                            _accumulate_hover(product_key, region, lead, hover_sink)
                             product_files[region] = relative
                         if product_files:
                             new_product_steps[product_key].append(
@@ -2494,6 +2620,25 @@ def build_product(
             with (product_directory / "index.json").open("w", encoding="utf-8") as handle:
                 json.dump(manifest, handle, ensure_ascii=False, separators=(",", ":"))
                 handle.write("\n")
+
+    # Fichiers de survol (values.json), un par (produit, région), consommés
+    # par cep-meteo.js (loadSynopticValues()). Écrits une seule fois ici,
+    # après accumulation de toutes les échéances dans `hover_values`.
+    hover_directories = {
+        "gh500": synoptic_directory,
+        "wind850": wind_temp_directory,
+        "flow850": wind_speed_directory,
+        **new_product_directories,
+    }
+    for (product_key, region), values_payload in hover_values.items():
+        product_directory = hover_directories.get(product_key)
+        if product_directory is None:
+            continue
+        region_directory = product_directory / region
+        region_directory.mkdir(parents=True, exist_ok=True)
+        with (region_directory / "values.json").open("w", encoding="utf-8") as handle:
+            json.dump(values_payload, handle, ensure_ascii=False, separators=(",", ":"))
+            handle.write("\n")
 
     model = {
         "name": "CEP / ECMWF IFS déterministe",

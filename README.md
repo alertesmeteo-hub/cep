@@ -12,6 +12,7 @@ Ce dépôt construit une chaîne directe **ECMWF Open Data IFS 0,25° → GitHub
 - échéances toutes les 3 h jusqu'à +144 h, puis toutes les 6 h jusqu'à +240 h ;
 - température, point de rosée, humidité, vent, rafales, pression, pluie, neige, nuages et CAPE selon disponibilité dans les produits ouverts ;
 - cartes WebP en isovaleurs remplies, lissées par interpolation bicubique, valeur sous la souris et prévisions par commune ;
+- onglet Synoptique (18 produits, France/Europe) : valeur au survol de la souris via un fichier `values.json` par produit/région, publié à côté des cartes ;
 - isobares de pression tous les 4 hPa et flèches directionnelles lisibles sur les cartes de vent et de rafales ;
 - cumuls de précipitations et rafales maximales calculés entre deux curseurs de période ;
 - copie directe de la carte dans le presse-papiers et téléchargement PNG compatible WebGL ;

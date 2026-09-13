@@ -224,7 +224,64 @@ def _setup_map_axes(
     fig = plt.figure(figsize=(fig_width, fig_height), dpi=dpi)
     ax = fig.add_axes(axes_rect, projection=projection)
     ax.set_extent(extent, crs=data_crs)
-    return fig, ax, data_crs, infoclimat
+    return fig, ax, data_crs, infoclimat, axes_rect
+
+
+_AXES_GEOMETRY_CACHE: dict[tuple, tuple[dict, dict]] = {}
+
+
+def synoptic_axes_geometry(
+    extent: tuple[float, float, float, float],
+    style: str,
+    figsize: tuple[float, float] = (11.0, 9.0),
+    dpi: int = 130,
+) -> tuple[dict, dict]:
+    """Retourne (axes_bbox, extent_reel) pour une région/style donnés.
+
+    `axes_bbox` = {x0,y0,x1,y1} en fraction de figure (convention matplotlib,
+    y=0 en bas). `extent_reel` = {west,east,south,north} = l'emprise
+    RÉELLEMENT affichée par les GeoAxes après ajustement d'aspect par
+    cartopy (peut différer de quelques dixièmes de degré de `extent`).
+    Identique pour tous les produits d'une même région/style (le figsize et
+    le dpi par défaut sont les mêmes pour tous les rendus synoptiques) :
+    mis en cache pour éviter de recréer une figure à chaque appel.
+    """
+    cache_key = (extent, style, figsize, dpi)
+    cached = _AXES_GEOMETRY_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    fig, ax, data_crs, _infoclimat, axes_rect = _setup_map_axes(extent, style, figsize, dpi)
+    west, east, south, north = ax.get_extent(data_crs)
+    plt.close(fig)
+    axes_bbox = {
+        "x0": float(axes_rect[0]), "y0": float(axes_rect[1]),
+        "x1": float(axes_rect[0] + axes_rect[2]), "y1": float(axes_rect[1] + axes_rect[3]),
+    }
+    extent_actual = {
+        "west": float(west), "east": float(east),
+        "south": float(south), "north": float(north),
+    }
+    result = (axes_bbox, extent_actual)
+    _AXES_GEOMETRY_CACHE[cache_key] = result
+    return result
+
+
+def downsample_for_hover(
+    field: np.ndarray,
+    latitudes: np.ndarray,
+    longitudes: np.ndarray,
+    max_points: int = 55,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Sous-échantillonne par décimation régulière (aucune interpolation,
+    la grille reste exacte) pour limiter la taille du JSON de survol publié
+    côté client. Retourne (latitudes, longitudes, field) réduits."""
+    lat_stride = max(1, len(latitudes) // max_points)
+    lon_stride = max(1, len(longitudes) // max_points)
+    return (
+        latitudes[::lat_stride],
+        longitudes[::lon_stride],
+        field[::lat_stride, ::lon_stride],
+    )
 
 
 def _add_basemap(ax) -> None:
@@ -262,7 +319,7 @@ def render_synoptic_map(
     gh_dam = grid.geopotential_height_m / 10.0
     mslp_hpa = grid.mean_sea_level_pressure_pa / 100.0
 
-    fig, ax, data_crs, infoclimat = _setup_map_axes(extent, style, figsize, dpi)
+    fig, ax, data_crs, infoclimat, axes_rect = _setup_map_axes(extent, style, figsize, dpi)
 
     cmap = GEOPOTENTIAL_CMAP_INFOCLIMAT if infoclimat else GEOPOTENTIAL_CMAP
     if infoclimat:
@@ -470,7 +527,7 @@ def render_wind_temp_map(
     `grid.temperature_c` en degrés Celsius, `grid.wind_u_ms`/`wind_v_ms` en
     m/s. `meta.level_hpa` indique le niveau (typiquement 850 hPa).
     """
-    fig, ax, data_crs, infoclimat = _setup_map_axes(extent, style, figsize, dpi)
+    fig, ax, data_crs, infoclimat, axes_rect = _setup_map_axes(extent, style, figsize, dpi)
 
     temp_low = int(np.floor(np.nanmin(grid.temperature_c) / 2.0) * 2.0)
     temp_high = int(np.ceil(np.nanmax(grid.temperature_c) / 2.0) * 2.0)
@@ -601,7 +658,7 @@ def render_scalar_field_map(
     pour `render_wind_temp_map`), car l'amplitude varie beaucoup selon le
     champ (ex. température 850 hPa vs 10 hPa stratosphérique).
     """
-    fig, ax, data_crs, infoclimat = _setup_map_axes(extent, style, figsize, dpi)
+    fig, ax, data_crs, infoclimat, axes_rect = _setup_map_axes(extent, style, figsize, dpi)
     cmap = cmap if cmap is not None else TEMPERATURE_850_CMAP
 
     value_low = float(np.floor(np.nanmin(grid.values) / level_step) * level_step)
@@ -732,7 +789,7 @@ def render_wind_speed_map(
     `level_label`, s'il est fourni, remplace le texte "{level_hpa} hPa" par
     défaut (utile pour un niveau de surface comme "10 m").
     """
-    fig, ax, data_crs, infoclimat = _setup_map_axes(extent, style, figsize, dpi)
+    fig, ax, data_crs, infoclimat, axes_rect = _setup_map_axes(extent, style, figsize, dpi)
     cmap = cmap if cmap is not None else WIND_SPEED_850_CMAP
     level_text = level_label if level_label is not None else f"{meta.level_hpa} hPa"
     level_text_compact = level_label if level_label is not None else f"{meta.level_hpa}hPa"
