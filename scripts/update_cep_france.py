@@ -1257,10 +1257,20 @@ def write_departments(
 
 
 IFS_SURFACE_PARAMETERS = [
-    "2t", "2d", "10u", "10v", "10fg", "msl", "sp", "tcc",
+    "2t", "2d", "10u", "10v", "msl", "sp", "tcc",
     "tp", "tprate", "sf", "sd", "mucape", "z", "skt", "ssrd",
     "ssr", "str",
 ]
+
+# Échéances où IFS Open Data publie la rafale 10m sous le nom `10fg3`
+# (fenêtre 3h) au lieu de `10fg` (confirmé par test réel : `10fg` seul
+# échoue précisément pour 96/120/144h, fonctionne partout ailleurs dans
+# nos échéances, y compris au-delà de 144h où le pas passe à 6h).
+GUSTS10M_3H_LEADS = {96, 120, 144}
+
+
+def gusts10m_param(lead: int) -> str:
+    return "10fg3" if lead in GUSTS10M_3H_LEADS else "10fg"
 
 
 def tempminmax_params(lead: int) -> list[str]:
@@ -1305,7 +1315,7 @@ def retrieve_ifs_step(
         stream="oper",
         type="fc",
         step=lead,
-        param=IFS_SURFACE_PARAMETERS + tempminmax_params(lead),
+        param=IFS_SURFACE_PARAMETERS + [gusts10m_param(lead)] + tempminmax_params(lead),
         target=str(destination),
     )
     pressure_destination = destination.with_name(
@@ -1929,11 +1939,12 @@ def build_gusts10m_map(
     destination: Path,
     region: str = "france",
 ) -> Path:
-    """Génère la carte des rafales à 10 m (fond coloré seul, champ `10fg`,
-    en m/s -> km/h). Pas de barbules/vecteurs : IFS ne fournit pas de
-    direction de rafale, seulement une vitesse instantanée sur la période."""
+    """Génère la carte des rafales à 10 m (fond coloré seul, champ `10fg`
+    ou `10fg3` selon l'échéance, voir `gusts10m_param`, en m/s -> km/h).
+    Pas de barbules/vecteurs : IFS ne fournit pas de direction de rafale,
+    seulement une vitesse instantanée sur la période."""
     extent = SYNOPTIC_REGIONS[region]
-    gust_native = extract_native_field(combined_grib, "10fg") * 3.6
+    gust_native = extract_native_field(combined_grib, gusts10m_param(lead_hour)) * 3.6
     latitudes, longitudes, gust = native_lonlat_subset(gust_native, extent)
     grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=gust)
     meta = SynopticMeta(
