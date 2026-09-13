@@ -1626,10 +1626,19 @@ def build_tempminmax_map(
     region: str = "france",
 ) -> Path:
     """Génère la carte des températures 2 m max (fond coloré) et min
-    (isolignes en pointillé), issues de `mx2t3`/`mn2t3`."""
+    (isolignes en pointillé), issues de `mx2t3`/`mn2t3`.
+
+    À l'échéance +0h, ces champs n'existent pas (pas de fenêtre de 3h
+    écoulée avant l'instant d'analyse) : on utilise `2t` comme repli.
+    """
     extent = SYNOPTIC_REGIONS[region]
-    tmax_native = extract_native_field(combined_grib, "mx2t3") - 273.15
-    tmin_native = extract_native_field(combined_grib, "mn2t3") - 273.15
+    if lead_hour == 0:
+        native = extract_native_field(combined_grib, "2t") - 273.15
+        tmax_native = native
+        tmin_native = native
+    else:
+        tmax_native = extract_native_field(combined_grib, "mx2t3") - 273.15
+        tmin_native = extract_native_field(combined_grib, "mn2t3") - 273.15
     latitudes, longitudes, tmax = native_lonlat_subset(tmax_native, extent)
     _, _, tmin = native_lonlat_subset(tmin_native, extent)
     grid = ScalarFieldGrid(
