@@ -1717,6 +1717,17 @@ def build_thetaw_map(
     )
 
 
+# Nouveaux produits synoptiques thermiques, tous à l'échéance WIND_TEMP_LEAD_HOURS
+# (24h), regroupés ici pour piloter la boucle d'orchestration dans build_product().
+NEW_SYNOPTIC_PRODUCTS = {
+    "temp500": build_temp500_map,
+    "temp850": build_temp850_map,
+    "temp10": build_temp10_map,
+    "tempminmax": build_tempminmax_map,
+    "thetae": build_thetae_map,
+    "thetaw": build_thetaw_map,
+}
+
 
 def build_product(
     client: Client,
