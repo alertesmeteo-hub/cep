@@ -337,9 +337,9 @@ def render_synoptic_map(
             transform=ax.transAxes, ha="center", va="top", fontsize=9, bbox=label_box,
         )
         ax.text(
-            0.5, 0.095, "www.alertes-meteo.com",
-            transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
-            color="black", bbox=label_box,
+            0.99, 0.02, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
+            color="white", bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 4},
         )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
         colorbar = fig.colorbar(
@@ -359,8 +359,9 @@ def render_synoptic_map(
         )
         fig.suptitle(_header_text(meta), fontsize=10, y=0.985)
         fig.text(
-            0.5, 0.015, "www.alertes-meteo.com",
-            ha="center", va="bottom", fontsize=9, color="dimgray",
+            0.99, 0.015, "www.alertes-meteo.com",
+            ha="right", va="bottom", fontsize=9, color="white",
+            bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 3},
         )
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -472,9 +473,9 @@ def render_wind_temp_map(
             transform=ax.transAxes, ha="center", va="top", fontsize=9, bbox=label_box,
         )
         ax.text(
-            0.5, 0.095, "www.alertes-meteo.com",
-            transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
-            color="black", bbox=label_box,
+            0.99, 0.02, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
+            color="white", bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 4},
         )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
         colorbar = fig.colorbar(
@@ -500,8 +501,9 @@ def render_wind_temp_map(
             fontsize=10, y=0.985,
         )
         fig.text(
-            0.5, 0.015, "www.alertes-meteo.com",
-            ha="center", va="bottom", fontsize=9, color="dimgray",
+            0.99, 0.015, "www.alertes-meteo.com",
+            ha="right", va="bottom", fontsize=9, color="white",
+            bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 3},
         )
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -606,9 +608,9 @@ def render_scalar_field_map(
             transform=ax.transAxes, ha="center", va="top", fontsize=9, bbox=label_box,
         )
         ax.text(
-            0.5, 0.095, "www.alertes-meteo.com",
-            transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
-            color="black", bbox=label_box,
+            0.99, 0.02, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
+            color="white", bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 4},
         )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
         colorbar = fig.colorbar(
@@ -632,8 +634,9 @@ def render_scalar_field_map(
             fontsize=10, y=0.985,
         )
         fig.text(
-            0.5, 0.015, "www.alertes-meteo.com",
-            ha="center", va="bottom", fontsize=9, color="dimgray",
+            0.99, 0.015, "www.alertes-meteo.com",
+            ha="right", va="bottom", fontsize=9, color="white",
+            bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 3},
         )
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -716,9 +719,9 @@ def render_wind_speed_map(
             transform=ax.transAxes, ha="center", va="top", fontsize=10, bbox=label_box,
         )
         ax.text(
-            0.5, 0.095, "www.alertes-meteo.com",
-            transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
-            color="black", bbox=label_box,
+            0.99, 0.02, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
+            color="white", bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 4},
         )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
         colorbar = fig.colorbar(
@@ -742,8 +745,9 @@ def render_wind_speed_map(
             fontsize=10, y=0.985,
         )
         fig.text(
-            0.5, 0.015, "www.alertes-meteo.com",
-            ha="center", va="bottom", fontsize=9, color="dimgray",
+            0.99, 0.015, "www.alertes-meteo.com",
+            ha="right", va="bottom", fontsize=9, color="white",
+            bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 3},
         )
 
     destination.parent.mkdir(parents=True, exist_ok=True)
