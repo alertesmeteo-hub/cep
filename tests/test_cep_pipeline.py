@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from update_cep_france import (  # noqa: E402
     CEP_NI,
     MapSampler,
+    compute_theta_e_theta_w,
     forecast_steps,
     grid_index,
     message_field,
@@ -163,9 +164,13 @@ class CEPGridTests(unittest.TestCase):
 
             def retrieve(self, **request) -> None:
                 self.calls.append(request)
-                Path(request["target"]).write_bytes(
-                    b"PRESSURE" if "levelist" in request else b"SURFACE"
-                )
+                if "levelist" not in request:
+                    payload = b"SURFACE"
+                elif request["levelist"] == [10]:
+                    payload = b"STRATO"
+                else:
+                    payload = b"PRESSURE"
+                Path(request["target"]).write_bytes(payload)
 
         client = FakeClient()
         with tempfile.TemporaryDirectory() as directory:
@@ -176,10 +181,11 @@ class CEPGridTests(unittest.TestCase):
                 6,
                 destination,
             )
-            self.assertEqual(destination.read_bytes(), b"SURFACEPRESSURE")
-        self.assertEqual(len(client.calls), 2)
+            self.assertEqual(destination.read_bytes(), b"SURFACEPRESSURESTRATO")
+        self.assertEqual(len(client.calls), 3)
         self.assertNotIn("levelist", client.calls[0])
         self.assertEqual(client.calls[1]["levelist"], [300, 500, 850])
+        self.assertEqual(client.calls[2]["levelist"], [10])
 
     def test_precise_department_boundaries_are_rendered(self) -> None:
         boundary_path = (
@@ -296,6 +302,23 @@ class CEPGridTests(unittest.TestCase):
         self.assertEqual(
             manifest["layers"]["rafales_max"]["source_key"], "rafales"
         )
+
+    def test_theta_e_and_theta_w_are_physically_plausible(self) -> None:
+        # T=15C, RH=70% a 850 hPa : cas typique en Europe.
+        theta_e, theta_w = compute_theta_e_theta_w(
+            np.array([15.0]), np.array([70.0]), 850.0
+        )
+        self.assertTrue(np.all(theta_w <= theta_e))
+        self.assertTrue(-30.0 <= float(theta_w[0]) <= 40.0)
+        self.assertTrue(-10.0 <= float(theta_e[0]) <= 70.0)
+
+    def test_theta_w_never_exceeds_theta_e(self) -> None:
+        temperatures = np.array([-20.0, -5.0, 0.0, 10.0, 25.0, 35.0])
+        humidities = np.array([95.0, 50.0, 80.0, 20.0, 90.0, 40.0])
+        theta_e, theta_w = compute_theta_e_theta_w(temperatures, humidities, 850.0)
+        self.assertTrue(np.all(theta_w <= theta_e + 1e-6))
+        self.assertTrue(np.all(np.isfinite(theta_e)))
+        self.assertTrue(np.all(np.isfinite(theta_w)))
 
 
 if __name__ == "__main__":

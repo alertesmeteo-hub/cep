@@ -37,10 +37,13 @@ from cep_maps import DEFAULT_BOUNDS, EUROPE_BOUNDS, CEPMapRenderer
 from synoptic_map import (
     SYNOPTIC_REGIONS,
     SYNOPTIC_STYLES,
+    ScalarFieldGrid,
     SynopticGrid,
     SynopticMeta,
+    TEMPERATURE_850_CMAP,
     WindSpeedGrid,
     WindTempGrid,
+    render_scalar_field_map,
     render_synoptic_map,
     render_wind_speed_map,
     render_wind_temp_map,
@@ -1250,10 +1253,15 @@ def write_departments(
 IFS_SURFACE_PARAMETERS = [
     "2t", "2d", "10u", "10v", "10fg", "msl", "sp", "tcc",
     "tp", "tprate", "sf", "sd", "mucape", "z", "skt", "ssrd",
-    "ssr", "str",
+    "ssr", "str", "mx2t3", "mn2t3",
 ]
 IFS_PRESSURE_PARAMETERS = ["t", "u", "v", "r", "gh", "z"]
 IFS_PRESSURE_LEVELS = [300, 500, 850]
+# Niveau stratosphérique 10 hPa, téléchargé séparément (pas dans
+# IFS_PRESSURE_LEVELS) pour ne pas alourdir les téléchargements des autres
+# niveaux : seule la température y est utile pour la carte synoptique dédiée.
+IFS_STRATO_LEVELS = [10]
+IFS_STRATO_PARAMETERS = ["t"]
 
 
 def forecast_steps(forecast_hours: int) -> list[int]:
@@ -1295,6 +1303,23 @@ def retrieve_ifs_step(
     with destination.open("ab") as output, pressure_destination.open("rb") as source:
         shutil.copyfileobj(source, output)
     pressure_destination.unlink()
+
+    strato_destination = destination.with_name(
+        f"{destination.stem}-strato{destination.suffix}"
+    )
+    client.retrieve(
+        date=run_time.strftime("%Y%m%d"),
+        time=run_time.hour,
+        stream="oper",
+        type="fc",
+        step=lead,
+        levelist=IFS_STRATO_LEVELS,
+        param=IFS_STRATO_PARAMETERS,
+        target=str(strato_destination),
+    )
+    with destination.open("ab") as output, strato_destination.open("rb") as source:
+        shutil.copyfileobj(source, output)
+    strato_destination.unlink()
 
 
 SYNOPTIC_LEVEL_HPA = 500
@@ -1457,6 +1482,242 @@ def build_wind_speed_map(
     )
 
 
+def compute_theta_e_theta_w(
+    temperature_c: np.ndarray, relative_humidity_pct: np.ndarray, pressure_hpa: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Calcule température potentielle équivalente et du thermomètre mouillé.
+
+    Approximations couramment utilisées en synoptique opérationnelle :
+    - Point de rosée : Lawrence (2005), Td ≈ T - (100-RH)/5.
+    - Pression de vapeur saturante : Bolton (1980).
+    - Theta_e : formule simplifiée de Bolton (1980).
+    - Theta_w : inversion empirique de Davies-Jones (2008), valide pour
+      theta_e >= ~173 K.
+    Retourne (theta_e_celsius, theta_w_celsius), toujours theta_w <= theta_e.
+    """
+    t_c = np.asarray(temperature_c, dtype=float)
+    rh = np.clip(np.asarray(relative_humidity_pct, dtype=float), 1.0, 100.0)
+
+    dewpoint_c = t_c - (100.0 - rh) / 5.0
+    vapor_pressure_hpa = 6.112 * np.exp(17.67 * dewpoint_c / (dewpoint_c + 243.5))
+    mixing_ratio_kgkg = 0.622 * vapor_pressure_hpa / (pressure_hpa - vapor_pressure_hpa)
+    mixing_ratio_gkg = mixing_ratio_kgkg * 1000.0
+
+    theta_kelvin = (t_c + 273.15) * (1000.0 / pressure_hpa) ** 0.286
+    lifting_condensation_kelvin = dewpoint_c + 273.15
+    theta_e_kelvin = theta_kelvin * np.exp(
+        (3.376 / lifting_condensation_kelvin - 0.00254)
+        * mixing_ratio_gkg
+        * (1.0 + 0.81 * mixing_ratio_gkg / 1000.0)
+    )
+
+    x = theta_e_kelvin / 273.15
+    a0, a1, a2, a3, a4 = 7.101574, -20.68208, 16.11182, 2.574631, -5.205688
+    b1, b2, b3, b4 = -3.552497, 3.781782, -0.6899655, -0.5929340
+    theta_w_kelvin = theta_e_kelvin - np.exp(
+        (a0 + a1 * x + a2 * x**2 + a3 * x**3 + a4 * x**4)
+        / (1 + b1 * x + b2 * x**2 + b3 * x**3 + b4 * x**4)
+    )
+
+    return theta_e_kelvin - 273.15, theta_w_kelvin - 273.15
+
+
+TEMP500_LEVEL_HPA = 500
+TEMP10_LEVEL_HPA = 10
+
+
+def build_temp500_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte de température à 500 hPa (fond coloré seul)."""
+    extent = SYNOPTIC_REGIONS[region]
+    t_native = extract_native_field(combined_grib, "t", level_hpa=TEMP500_LEVEL_HPA) - 273.15
+    latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
+    grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=temperature)
+    meta = SynopticMeta(
+        level_hpa=TEMP500_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Température",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="Température 500 hPa (°C)",
+        title_label="Température à 500 hPa",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=TEMPERATURE_850_CMAP, level_step=2.0,
+    )
+
+
+def build_temp850_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte de température à 850 hPa (fond coloré seul)."""
+    extent = SYNOPTIC_REGIONS[region]
+    t_native = extract_native_field(combined_grib, "t", level_hpa=WIND_TEMP_LEVEL_HPA) - 273.15
+    latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
+    grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=temperature)
+    meta = SynopticMeta(
+        level_hpa=WIND_TEMP_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Température",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="Température 850 hPa (°C)",
+        title_label="Température à 850 hPa",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=TEMPERATURE_850_CMAP, level_step=2.0,
+    )
+
+
+def build_temp10_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte de température à 10 hPa (stratosphère basse).
+
+    Utilise le champ `t`@10hPa téléchargé séparément par `retrieve_ifs_step`
+    (niveau absent de `IFS_PRESSURE_LEVELS`).
+    """
+    extent = SYNOPTIC_REGIONS[region]
+    t_native = extract_native_field(combined_grib, "t", level_hpa=TEMP10_LEVEL_HPA) - 273.15
+    latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
+    grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=temperature)
+    meta = SynopticMeta(
+        level_hpa=TEMP10_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Température",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="Température 10 hPa (°C)",
+        title_label="Température à 10 hPa (stratosphère)",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=TEMPERATURE_850_CMAP, level_step=2.0,
+    )
+
+
+def build_tempminmax_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte des températures 2 m max (fond coloré) et min
+    (isolignes en pointillé), issues de `mx2t3`/`mn2t3`."""
+    extent = SYNOPTIC_REGIONS[region]
+    tmax_native = extract_native_field(combined_grib, "mx2t3") - 273.15
+    tmin_native = extract_native_field(combined_grib, "mn2t3") - 273.15
+    latitudes, longitudes, tmax = native_lonlat_subset(tmax_native, extent)
+    _, _, tmin = native_lonlat_subset(tmin_native, extent)
+    grid = ScalarFieldGrid(
+        latitudes=latitudes, longitudes=longitudes, values=tmax, values_secondary=tmin,
+    )
+    meta = SynopticMeta(
+        level_hpa=0,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Température 2 m max/min",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="Température 2 m max (°C, fond) / min (°C, isolignes)",
+        title_label="Température 2 m max (fond) & min (isolignes)",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=TEMPERATURE_850_CMAP, level_step=2.0,
+    )
+
+
+def build_thetae_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte de theta-E (température potentielle équivalente) à
+    850 hPa, calculée à partir de `t` et `r` déjà téléchargés."""
+    extent = SYNOPTIC_REGIONS[region]
+    t_native = extract_native_field(combined_grib, "t", level_hpa=WIND_TEMP_LEVEL_HPA) - 273.15
+    r_native = extract_native_field(combined_grib, "r", level_hpa=WIND_TEMP_LEVEL_HPA)
+    latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
+    _, _, humidity = native_lonlat_subset(r_native, extent)
+    theta_e, _theta_w = compute_theta_e_theta_w(temperature, humidity, WIND_TEMP_LEVEL_HPA)
+    grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=theta_e)
+    meta = SynopticMeta(
+        level_hpa=WIND_TEMP_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="ThetaE",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="ThetaE 850 hPa (°C)",
+        title_label="Température potentielle équivalente (ThetaE) 850 hPa",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=TEMPERATURE_850_CMAP, level_step=4.0,
+    )
+
+
+def build_thetaw_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte de theta-W (température potentielle du thermomètre
+    mouillé) à 850 hPa, calculée à partir de `t` et `r` déjà téléchargés."""
+    extent = SYNOPTIC_REGIONS[region]
+    t_native = extract_native_field(combined_grib, "t", level_hpa=WIND_TEMP_LEVEL_HPA) - 273.15
+    r_native = extract_native_field(combined_grib, "r", level_hpa=WIND_TEMP_LEVEL_HPA)
+    latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
+    _, _, humidity = native_lonlat_subset(r_native, extent)
+    _theta_e, theta_w = compute_theta_e_theta_w(temperature, humidity, WIND_TEMP_LEVEL_HPA)
+    grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=theta_w)
+    meta = SynopticMeta(
+        level_hpa=WIND_TEMP_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="ThetaW",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="ThetaW 850 hPa (°C)",
+        title_label="Température potentielle du thermomètre mouillé (ThetaW) 850 hPa",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=TEMPERATURE_850_CMAP, level_step=2.0,
+    )
+
+
+
 def build_product(
     client: Client,
     catalog: NationalCatalog,
@@ -1533,6 +1794,15 @@ def build_product(
     wind_temp_steps: list[dict[str, Any]] = []
     wind_speed_directory = result_directory / "maps" / "synoptic-flow850"
     wind_speed_steps: list[dict[str, Any]] = []
+    # Nouveaux produits synoptiques thermiques (temp500/temp850/temp10/
+    # tempminmax/thetae/thetaw) : même cadence (24h) que wind850/flow850,
+    # un répertoire + manifeste par produit.
+    new_product_directories = {
+        key: result_directory / "maps" / f"synoptic-{key}" for key in NEW_SYNOPTIC_PRODUCTS
+    }
+    new_product_steps: dict[str, list[dict[str, Any]]] = {
+        key: [] for key in NEW_SYNOPTIC_PRODUCTS
+    }
 
     try:
         steps = forecast_steps(forecast_hours)
@@ -1698,6 +1968,32 @@ def build_product(
                             "files": wind_speed_files,
                         }
                     )
+                    for product_key, builder in NEW_SYNOPTIC_PRODUCTS.items():
+                        LOGGER.info(
+                            "Carte synoptique %s +%03d h", product_key, lead
+                        )
+                        product_files: dict[str, str] = {}
+                        for region in SYNOPTIC_REGIONS:
+                            relative = (
+                                f"maps/synoptic-{product_key}/{region}/"
+                                f"{product_key}-{lead:03d}h.png"
+                            )
+                            builder(
+                                combined_grib=destination,
+                                run_time=model_run,
+                                lead_hour=lead,
+                                valid_time=step["valid_time"],
+                                destination=result_directory / relative,
+                                region=region,
+                            )
+                            product_files[region] = relative
+                        new_product_steps[product_key].append(
+                            {
+                                "lead_hour": lead,
+                                "valid_time": iso_utc(step["valid_time"]),
+                                "files": product_files,
+                            }
+                        )
                 iso_time = iso_utc(step["valid_time"])
                 for code, department in catalog.departments.items():
                     line = [
@@ -1778,6 +2074,39 @@ def build_product(
         with (wind_speed_directory / "index.json").open("w", encoding="utf-8") as handle:
             json.dump(wind_speed_manifest, handle, ensure_ascii=False, separators=(",", ":"))
             handle.write("\n")
+
+    new_product_variables = {
+        "temp500": "temperature",
+        "temp850": "temperature",
+        "temp10": "temperature",
+        "tempminmax": "temperature_minmax",
+        "thetae": "theta_e",
+        "thetaw": "theta_w",
+    }
+    new_product_levels = {
+        "temp500": TEMP500_LEVEL_HPA,
+        "temp850": WIND_TEMP_LEVEL_HPA,
+        "temp10": TEMP10_LEVEL_HPA,
+        "tempminmax": 0,
+        "thetae": WIND_TEMP_LEVEL_HPA,
+        "thetaw": WIND_TEMP_LEVEL_HPA,
+    }
+    new_product_manifests: dict[str, dict[str, Any]] = {}
+    for product_key, steps_list in new_product_steps.items():
+        manifest = {
+            "level_hpa": new_product_levels[product_key],
+            "variable": new_product_variables[product_key],
+            "run_time": run_time,
+            "regions": list(SYNOPTIC_REGIONS),
+            "steps": steps_list,
+        }
+        new_product_manifests[product_key] = manifest
+        if steps_list:
+            product_directory = new_product_directories[product_key]
+            product_directory.mkdir(parents=True, exist_ok=True)
+            with (product_directory / "index.json").open("w", encoding="utf-8") as handle:
+                json.dump(manifest, handle, ensure_ascii=False, separators=(",", ":"))
+                handle.write("\n")
 
     model = {
         "name": "CEP / ECMWF IFS déterministe",
@@ -1861,6 +2190,15 @@ def build_product(
             "level_hpa": WIND_TEMP_LEVEL_HPA,
             "manifest": "maps/synoptic-flow850/index.json",
             "steps": len(wind_speed_steps),
+        },
+        **{
+            f"synoptic_{product_key}": {
+                "status": "ok" if steps_list else "unavailable",
+                "level_hpa": new_product_levels[product_key],
+                "manifest": f"maps/synoptic-{product_key}/index.json",
+                "steps": len(steps_list),
+            }
+            for product_key, steps_list in new_product_steps.items()
         },
         "departments": department_index,
         "total_department_bytes": total_size,

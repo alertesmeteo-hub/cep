@@ -512,6 +512,138 @@ def render_wind_temp_map(
 
 
 @dataclass(frozen=True)
+class ScalarFieldGrid:
+    """Grille lat/lon régulière portant un champ scalaire simple (fond coloré
+    seul, sans barbules), avec un champ secondaire optionnel (ex. min à côté
+    d'un max, tracé en isolignes)."""
+
+    latitudes: np.ndarray
+    longitudes: np.ndarray
+    values: np.ndarray  # 2D (nj, ni)
+    values_secondary: np.ndarray | None = None  # 2D (nj, ni), optionnel
+
+    def __post_init__(self) -> None:
+        expected = (len(self.latitudes), len(self.longitudes))
+        if self.values.shape != expected:
+            raise ValueError(f"values a la forme {self.values.shape}, attendu {expected}")
+        if self.values_secondary is not None and self.values_secondary.shape != expected:
+            raise ValueError(
+                f"values_secondary a la forme {self.values_secondary.shape}, "
+                f"attendu {expected}"
+            )
+
+
+def render_scalar_field_map(
+    grid: ScalarFieldGrid,
+    meta: SynopticMeta,
+    destination: Path,
+    unit_label: str,
+    title_label: str,
+    extent: tuple[float, float, float, float] = DEFAULT_EXTENT,
+    figsize: tuple[float, float] = (11.0, 9.0),
+    dpi: int = 130,
+    style: str = "classic",
+    cmap=None,
+    level_step: float = 2.0,
+    secondary_label: str = "Min",
+) -> Path:
+    """Trace un champ scalaire (fond coloré) avec, en option, un second champ
+    en isolignes en pointillé (ex. température max en fond, min en isolignes).
+
+    Les niveaux de `contourf` s'adaptent à la plage réelle des données (comme
+    pour `render_wind_temp_map`), car l'amplitude varie beaucoup selon le
+    champ (ex. température 850 hPa vs 10 hPa stratosphérique).
+    """
+    fig, ax, data_crs, infoclimat = _setup_map_axes(extent, style, figsize, dpi)
+    cmap = cmap if cmap is not None else TEMPERATURE_850_CMAP
+
+    value_low = float(np.floor(np.nanmin(grid.values) / level_step) * level_step)
+    value_high = float(np.ceil(np.nanmax(grid.values) / level_step) * level_step)
+    if grid.values_secondary is not None:
+        value_low = min(
+            value_low,
+            float(np.floor(np.nanmin(grid.values_secondary) / level_step) * level_step),
+        )
+    levels = np.arange(value_low, value_high + level_step, level_step)
+    fill = ax.contourf(
+        grid.longitudes, grid.latitudes, grid.values,
+        levels=levels, cmap=cmap, transform=data_crs, extend="both",
+    )
+
+    if grid.values_secondary is not None:
+        secondary_low = float(np.floor(np.nanmin(grid.values_secondary) / level_step) * level_step)
+        secondary_high = float(np.ceil(np.nanmax(grid.values_secondary) / level_step) * level_step)
+        secondary_levels = np.arange(secondary_low, secondary_high + level_step, level_step)
+        secondary_contours = ax.contour(
+            grid.longitudes, grid.latitudes, grid.values_secondary,
+            levels=secondary_levels, colors="white", linewidths=1.0,
+            linestyles="dashed", transform=data_crs,
+        )
+        ax.clabel(secondary_contours, inline=True, fontsize=7, fmt="%d", colors="white")
+
+    _add_basemap(ax)
+
+    if infoclimat:
+        run = f"{meta.run_time.strftime('%HZ')} {_format_french_date(meta.run_time)}"
+        valid = f"{_format_french_date(meta.valid_time, with_weekday=True)} {meta.valid_time.strftime('%H')}H UTC"
+        label_box = {"facecolor": "white", "alpha": 0.75, "edgecolor": "none", "pad": 4}
+        ax.text(
+            0.01, 0.99, f"Run ECMWF/CEP 0,25°\n{run}",
+            transform=ax.transAxes, ha="left", va="top", fontsize=9, bbox=label_box,
+        )
+        ax.text(
+            0.99, 0.99, f"Échéance : {valid}",
+            transform=ax.transAxes, ha="right", va="top", fontsize=10,
+            fontweight="bold", color="#cc0000", bbox=label_box,
+        )
+        ax.text(
+            0.99, 0.935, f"+{meta.lead_hour}H",
+            transform=ax.transAxes, ha="right", va="top", fontsize=13,
+            fontweight="bold", color="#cc0000", bbox=label_box,
+        )
+        ax.text(
+            0.5, 0.99, title_label,
+            transform=ax.transAxes, ha="center", va="top", fontsize=9, bbox=label_box,
+        )
+        ax.text(
+            0.5, 0.095, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
+            color="black", bbox=label_box,
+        )
+        colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
+        colorbar = fig.colorbar(
+            fill, cax=colorbar_axes, orientation="horizontal", ticks=levels[::2],
+        )
+        colorbar.ax.tick_params(labelsize=8, colors="black", labeltop=True, labelbottom=False)
+        colorbar_axes.set_facecolor("white")
+        ax.text(
+            0.32, 0.0375, unit_label,
+            transform=ax.transAxes, ha="right", va="center", fontsize=8, bbox=label_box,
+        )
+    else:
+        fig.colorbar(
+            fill, ax=ax, orientation="vertical", fraction=0.025, pad=0.01, label=unit_label,
+        )
+        run = meta.run_time.strftime("%d/%m/%Y %HZ")
+        valid = meta.valid_time.strftime("%a %d/%m %HZ")
+        fig.suptitle(
+            f"{title_label}  |  Run {run}  —  "
+            f"Échéance +{meta.lead_hour:03d} h  —  Validité {valid}",
+            fontsize=10, y=0.985,
+        )
+        fig.text(
+            0.5, 0.015, "www.alertes-meteo.com",
+            ha="center", va="bottom", fontsize=9, color="dimgray",
+        )
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(destination, format="png")
+    plt.close(fig)
+    LOGGER.info("Carte de champ scalaire écrite : %s", destination)
+    return destination
+
+
+@dataclass(frozen=True)
 class WindSpeedGrid:
     """Grille lat/lon régulière portant le vent (composantes) à un niveau."""
 
