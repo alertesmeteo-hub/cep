@@ -35,8 +35,14 @@ from scipy.ndimage import map_coordinates
 
 from cep_maps import DEFAULT_BOUNDS, EUROPE_BOUNDS, CEPMapRenderer
 from synoptic_map import (
+    CLOUDCOVER_CMAP,
+    GEOPOTENTIAL_CMAP,
+    GUSTS_CMAP,
+    MUCAPE_CMAP,
+    PRECIPITATION_CMAP,
     SYNOPTIC_REGIONS,
     SYNOPTIC_STYLES,
+    WIND_SPEED_850_CMAP,
     ScalarFieldGrid,
     SynopticGrid,
     SynopticMeta,
@@ -51,7 +57,7 @@ from synoptic_map import (
 
 
 LOGGER = logging.getLogger("cep.france")
-PIPELINE_VERSION = "1.6.1"
+PIPELINE_VERSION = "1.7.0"
 DATASET_PAGE = "https://www.ecmwf.int/en/forecasts/datasets/open-data"
 DEFAULT_CURRENT_METADATA_URL = (
     "https://raw.githubusercontent.com/alertesmeteo-hub/"
@@ -1745,6 +1751,302 @@ def build_thetaw_map(
     )
 
 
+SURFACE_LEVEL_HPA = 0
+
+
+def build_temp2m_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte de température à 2 m (fond coloré seul), champ `2t`."""
+    extent = SYNOPTIC_REGIONS[region]
+    t_native = extract_native_field(combined_grib, "2t") - 273.15
+    latitudes, longitudes, temperature = native_lonlat_subset(t_native, extent)
+    grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=temperature)
+    meta = SynopticMeta(
+        level_hpa=SURFACE_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Température 2 m",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="Température 2 m (°C)",
+        title_label="Température à 2 m",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=TEMPERATURE_850_CMAP, level_step=2.0,
+    )
+
+
+def build_dewpoint2m_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte de point de rosée à 2 m (fond coloré seul), champ `2d`."""
+    extent = SYNOPTIC_REGIONS[region]
+    td_native = extract_native_field(combined_grib, "2d") - 273.15
+    latitudes, longitudes, dewpoint = native_lonlat_subset(td_native, extent)
+    grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=dewpoint)
+    meta = SynopticMeta(
+        level_hpa=SURFACE_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Point de rosée 2 m",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="Point de rosée 2 m (°C)",
+        title_label="Point de rosée à 2 m",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=TEMPERATURE_850_CMAP, level_step=2.0,
+    )
+
+
+def build_precip_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path | None:
+    """Génère la carte des précipitations totales cumulées depuis le run
+    (champ `tp`, en mètres -> mm).
+
+    À l'échéance +0h, `tp` vaut 0 partout (aucun cumul écoulé) : le rendu
+    serait une carte plate sans intérêt, donc on saute cette échéance pour ce
+    produit (retourne None, géré par l'appelant dans build_product()).
+    """
+    if lead_hour == 0:
+        LOGGER.info("Précipitations totales : +000h ignorée (cumul nul depuis le run)")
+        return None
+    extent = SYNOPTIC_REGIONS[region]
+    tp_native = extract_native_field(combined_grib, "tp") * 1000.0
+    tp_native = np.clip(tp_native, 0.0, None)
+    latitudes, longitudes, precipitation = native_lonlat_subset(tp_native, extent)
+    grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=precipitation)
+    meta = SynopticMeta(
+        level_hpa=SURFACE_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Précipitations totales",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="Précipitations totales depuis le run (mm)",
+        title_label="Précipitations totales cumulées depuis le run",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=PRECIPITATION_CMAP, level_step=5.0,
+    )
+
+
+def build_snow_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path | None:
+    """Génère la carte de hauteur de neige équivalent eau cumulée depuis le
+    run (champ `sf`, en mètres -> mm équivalent eau, même échelle que `tp`).
+
+    Comme pour les précipitations, `sf` vaut 0 partout à +0h : échéance
+    sautée pour ce produit (retourne None).
+    """
+    if lead_hour == 0:
+        LOGGER.info("Neige cumulée : +000h ignorée (cumul nul depuis le run)")
+        return None
+    extent = SYNOPTIC_REGIONS[region]
+    sf_native = extract_native_field(combined_grib, "sf") * 1000.0
+    sf_native = np.clip(sf_native, 0.0, None)
+    latitudes, longitudes, snow = native_lonlat_subset(sf_native, extent)
+    grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=snow)
+    meta = SynopticMeta(
+        level_hpa=SURFACE_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Neige cumulée",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="Neige cumulée depuis le run, équivalent eau (mm)",
+        title_label="Hauteur de neige (équivalent eau) cumulée depuis le run",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=PRECIPITATION_CMAP, level_step=2.0,
+    )
+
+
+def build_wind10m_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte de vent moyen à 10 m (vitesse + lignes de flux),
+    champs `10u`/`10v`. Même rendu que le flux 850 hPa (`render_wind_speed_map`),
+    avec un libellé de niveau adapté ("10 m" au lieu de "xxx hPa")."""
+    extent = SYNOPTIC_REGIONS[region]
+    u_native = extract_native_field(combined_grib, "10u")
+    v_native = extract_native_field(combined_grib, "10v")
+    latitudes, longitudes, wind_u = native_lonlat_subset(u_native, extent)
+    _, _, wind_v = native_lonlat_subset(v_native, extent)
+    grid = WindSpeedGrid(
+        latitudes=latitudes, longitudes=longitudes, wind_u_ms=wind_u, wind_v_ms=wind_v,
+    )
+    meta = SynopticMeta(
+        level_hpa=SURFACE_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Vent 10 m",
+    )
+    return render_wind_speed_map(
+        grid, meta, destination, extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=WIND_SPEED_850_CMAP, level_label="10 m",
+    )
+
+
+def build_gusts10m_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte des rafales à 10 m (fond coloré seul, champ `10fg`,
+    en m/s -> km/h). Pas de barbules/vecteurs : IFS ne fournit pas de
+    direction de rafale, seulement une vitesse instantanée sur la période."""
+    extent = SYNOPTIC_REGIONS[region]
+    gust_native = extract_native_field(combined_grib, "10fg") * 3.6
+    latitudes, longitudes, gust = native_lonlat_subset(gust_native, extent)
+    grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=gust)
+    meta = SynopticMeta(
+        level_hpa=SURFACE_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Rafales 10 m",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="Rafales 10 m (km/h)",
+        title_label="Rafales à 10 m",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=GUSTS_CMAP, level_step=10.0,
+    )
+
+
+def build_mucape_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte de MUCAPE instantanée (fond coloré seul, champ
+    `mucape`, déjà en J/kg, pas de conversion)."""
+    extent = SYNOPTIC_REGIONS[region]
+    cape_native = extract_native_field(combined_grib, "mucape")
+    cape_native = np.clip(cape_native, 0.0, None)
+    latitudes, longitudes, cape = native_lonlat_subset(cape_native, extent)
+    grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=cape)
+    meta = SynopticMeta(
+        level_hpa=SURFACE_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="MUCAPE",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="MUCAPE (J/kg)",
+        title_label="MUCAPE (instabilité la plus instable)",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=MUCAPE_CMAP, level_step=100.0,
+    )
+
+
+def build_cloudcover_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte de couverture nuageuse totale (fond coloré seul,
+    champ `tcc`). Convertit en % si le GRIB livre une fraction 0-1."""
+    extent = SYNOPTIC_REGIONS[region]
+    tcc_native = extract_native_field(combined_grib, "tcc")
+    if np.nanmax(tcc_native) <= 1.5:
+        tcc_native = tcc_native * 100.0
+    tcc_native = np.clip(tcc_native, 0.0, 100.0)
+    latitudes, longitudes, cloud_cover = native_lonlat_subset(tcc_native, extent)
+    grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=cloud_cover)
+    meta = SynopticMeta(
+        level_hpa=SURFACE_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Couverture nuageuse totale",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="Couverture nuageuse totale (%)",
+        title_label="Couverture nuageuse totale",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=CLOUDCOVER_CMAP, level_step=10.0,
+    )
+
+
+def build_mslp_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+) -> Path:
+    """Génère la carte de pression au niveau de la mer seule (isobares
+    blanches labellisées sur fond coloré), sans géopotentiel — réutilise le
+    champ `msl` déjà employé par `build_synoptic_map` pour gh500."""
+    extent = SYNOPTIC_REGIONS[region]
+    mslp_native = extract_native_field(combined_grib, "msl") / 100.0
+    latitudes, longitudes, mslp_hpa = native_lonlat_subset(mslp_native, extent)
+    grid = ScalarFieldGrid(latitudes=latitudes, longitudes=longitudes, values=mslp_hpa)
+    meta = SynopticMeta(
+        level_hpa=SURFACE_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Pression mer",
+    )
+    return render_scalar_field_map(
+        grid, meta, destination,
+        unit_label="Pression au niveau de la mer (hPa)",
+        title_label="Pression au niveau de la mer",
+        extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=GEOPOTENTIAL_CMAP, level_step=4.0,
+    )
+
+
 # Nouveaux produits synoptiques thermiques, tous à l'échéance WIND_TEMP_LEAD_HOURS
 # (24h), regroupés ici pour piloter la boucle d'orchestration dans build_product().
 NEW_SYNOPTIC_PRODUCTS = {
@@ -1754,6 +2056,15 @@ NEW_SYNOPTIC_PRODUCTS = {
     "tempminmax": build_tempminmax_map,
     "thetae": build_thetae_map,
     "thetaw": build_thetaw_map,
+    "temp2m": build_temp2m_map,
+    "dewpoint2m": build_dewpoint2m_map,
+    "precip": build_precip_map,
+    "snow": build_snow_map,
+    "wind10m": build_wind10m_map,
+    "gusts10m": build_gusts10m_map,
+    "mucape": build_mucape_map,
+    "cloudcover": build_cloudcover_map,
+    "mslp": build_mslp_map,
 }
 
 
@@ -2017,7 +2328,7 @@ def build_product(
                                 f"maps/synoptic-{product_key}/{region}/"
                                 f"{product_key}-{lead:03d}h.png"
                             )
-                            builder(
+                            written = builder(
                                 combined_grib=destination,
                                 run_time=model_run,
                                 lead_hour=lead,
@@ -2025,14 +2336,22 @@ def build_product(
                                 destination=result_directory / relative,
                                 region=region,
                             )
+                            # Un builder peut retourner None pour signaler
+                            # qu'il n'y a rien à afficher à cette échéance
+                            # (ex. précipitations/neige cumulées nulles à
+                            # +000h) : on saute alors cette région/échéance
+                            # pour ce produit sans écrire de fichier.
+                            if written is None:
+                                continue
                             product_files[region] = relative
-                        new_product_steps[product_key].append(
-                            {
-                                "lead_hour": lead,
-                                "valid_time": iso_utc(step["valid_time"]),
-                                "files": product_files,
-                            }
-                        )
+                        if product_files:
+                            new_product_steps[product_key].append(
+                                {
+                                    "lead_hour": lead,
+                                    "valid_time": iso_utc(step["valid_time"]),
+                                    "files": product_files,
+                                }
+                            )
                 iso_time = iso_utc(step["valid_time"])
                 for code, department in catalog.departments.items():
                     line = [
@@ -2121,6 +2440,15 @@ def build_product(
         "tempminmax": "temperature_minmax",
         "thetae": "theta_e",
         "thetaw": "theta_w",
+        "temp2m": "temperature",
+        "dewpoint2m": "dewpoint",
+        "precip": "precipitation_total",
+        "snow": "snow_total",
+        "wind10m": "wind_speed",
+        "gusts10m": "wind_gust",
+        "mucape": "mucape",
+        "cloudcover": "cloud_cover",
+        "mslp": "mslp",
     }
     new_product_levels = {
         "temp500": TEMP500_LEVEL_HPA,
@@ -2129,6 +2457,15 @@ def build_product(
         "tempminmax": 0,
         "thetae": WIND_TEMP_LEVEL_HPA,
         "thetaw": WIND_TEMP_LEVEL_HPA,
+        "temp2m": 0,
+        "dewpoint2m": 0,
+        "precip": 0,
+        "snow": 0,
+        "wind10m": 0,
+        "gusts10m": 0,
+        "mucape": 0,
+        "cloudcover": 0,
+        "mslp": 0,
     }
     new_product_manifests: dict[str, dict[str, Any]] = {}
     for product_key, steps_list in new_product_steps.items():

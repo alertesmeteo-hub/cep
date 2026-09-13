@@ -391,6 +391,51 @@ WIND_SPEED_850_CMAP = LinearSegmentedColormap.from_list(
     ],
 )
 
+# Palette précipitations reprise des cartes interactives existantes
+# (cep_maps.py, PRECIPITATION_STOPS, tronquée à 100 mm) : blanc -> bleu ->
+# vert -> jaune -> orange -> rouge -> violet, façon météo classique.
+# Réutilisée telle quelle pour la neige (équivalent eau), cohérente avec le
+# reste du site plutôt qu'une palette inventée.
+PRECIPITATION_CMAP = LinearSegmentedColormap.from_list(
+    "precipitation",
+    [
+        "#f5f5f7", "#c9e6ff", "#7fbbff", "#438fff", "#1bd0ef",
+        "#00b8bd", "#00ca76", "#32e300", "#86ed00", "#d2ef00",
+        "#fff000", "#ffd000", "#ff9900", "#ff6500", "#ff2e00",
+        "#ef0054", "#d000a7", "#a000e8",
+    ],
+)
+
+# Palette rafales 10 m reprise des cartes interactives existantes
+# (cep_maps.py, layer "rafales", wind_gust_kmh) : vert -> jaune -> orange ->
+# rouge -> violet -> noir, pour rester cohérent avec le reste du site.
+GUSTS_CMAP = LinearSegmentedColormap.from_list(
+    "gusts_10m",
+    [
+        "#edf7e8", "#a9d77d", "#f0cf46", "#ef8b2c", "#db3d3d",
+        "#9e235d", "#4d1647", "#25152e",
+    ],
+)
+
+# Palette MUCAPE reprise des cartes interactives existantes (cep_maps.py,
+# layer "mucape", cape_jkg) : blanc/bleu clair -> vert -> jaune -> orange ->
+# rouge -> violet foncé, façon instabilité convective.
+MUCAPE_CMAP = LinearSegmentedColormap.from_list(
+    "mucape",
+    [
+        "#f3f5f8", "#d8ebff", "#91c8ff", "#41a8df", "#31c878",
+        "#d5e52f", "#ffc62d", "#ff7a22", "#e83028", "#8c1d74",
+    ],
+)
+
+# Palette nébulosité totale reprise des cartes interactives existantes
+# (cep_maps.py, layer "nebulosite", cloud_cover_pct) : bleu très clair ->
+# gris -> gris foncé, façon couverture nuageuse.
+CLOUDCOVER_CMAP = LinearSegmentedColormap.from_list(
+    "cloud_cover",
+    ["#dceef6", "#c8dce5", "#abbac5", "#8997a4", "#626e79", "#343d46"],
+)
+
 
 @dataclass(frozen=True)
 class WindTempGrid:
@@ -566,6 +611,11 @@ def render_scalar_field_map(
             value_low,
             float(np.floor(np.nanmin(grid.values_secondary) / level_step) * level_step),
         )
+    if value_high <= value_low:
+        # Champ constant sur toute l'emprise (ex. champ cumulé/instantané nul
+        # partout à une échéance donnée) : contourf exige au moins 2 niveaux
+        # distincts, on élargit donc artificiellement la plage.
+        value_high = value_low + level_step
     levels = np.arange(value_low, value_high + level_step, level_step)
     fill = ax.contourf(
         grid.longitudes, grid.latitudes, grid.values,
@@ -672,20 +722,27 @@ def render_wind_speed_map(
     figsize: tuple[float, float] = (11.0, 9.0),
     dpi: int = 130,
     style: str = "classic",
+    cmap=None,
+    level_label: str | None = None,
 ) -> Path:
     """Trace la vitesse du vent (fond coloré, km/h) avec lignes de flux.
 
     `grid.wind_u_ms`/`wind_v_ms` en m/s. `meta.level_hpa` indique le niveau
     (typiquement 850 hPa). Style "flux" façon météociel/wetterzentrale.
+    `level_label`, s'il est fourni, remplace le texte "{level_hpa} hPa" par
+    défaut (utile pour un niveau de surface comme "10 m").
     """
     fig, ax, data_crs, infoclimat = _setup_map_axes(extent, style, figsize, dpi)
+    cmap = cmap if cmap is not None else WIND_SPEED_850_CMAP
+    level_text = level_label if level_label is not None else f"{meta.level_hpa} hPa"
+    level_text_compact = level_label if level_label is not None else f"{meta.level_hpa}hPa"
 
     speed_kmh = np.hypot(grid.wind_u_ms, grid.wind_v_ms) * 3.6
     speed_high = max(20.0, float(np.ceil(np.nanmax(speed_kmh) / 10.0) * 10.0))
     speed_levels = np.arange(0, speed_high + 10.0, 10.0)
     fill = ax.contourf(
         grid.longitudes, grid.latitudes, speed_kmh,
-        levels=speed_levels, cmap=WIND_SPEED_850_CMAP, transform=data_crs, extend="max",
+        levels=speed_levels, cmap=cmap, transform=data_crs, extend="max",
     )
 
     ax.streamplot(
@@ -695,7 +752,7 @@ def render_wind_speed_map(
 
     _add_basemap(ax)
 
-    unit_label = f"Vent {meta.level_hpa} hPa (km/h)"
+    unit_label = f"Vent {level_text} (km/h)"
     if infoclimat:
         run = f"{meta.run_time.strftime('%HZ')} {_format_french_date(meta.run_time)}"
         valid = f"{_format_french_date(meta.valid_time, with_weekday=True)} {meta.valid_time.strftime('%H')}H UTC"
@@ -715,7 +772,7 @@ def render_wind_speed_map(
             fontweight="bold", color="#cc0000", bbox=label_box,
         )
         ax.text(
-            0.5, 0.99, f"Flux à {meta.level_hpa}hPa",
+            0.5, 0.99, f"Flux à {level_text_compact}",
             transform=ax.transAxes, ha="center", va="top", fontsize=10, bbox=label_box,
         )
         ax.text(
@@ -740,7 +797,7 @@ def render_wind_speed_map(
         run = meta.run_time.strftime("%d/%m/%Y %HZ")
         valid = meta.valid_time.strftime("%a %d/%m %HZ")
         fig.suptitle(
-            f"Flux à {meta.level_hpa} hPa  |  Run {run}  —  "
+            f"Flux à {level_text}  |  Run {run}  —  "
             f"Échéance +{meta.lead_hour:03d} h  —  Validité {valid}",
             fontsize=10, y=0.985,
         )
