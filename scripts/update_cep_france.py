@@ -1253,8 +1253,23 @@ def write_departments(
 IFS_SURFACE_PARAMETERS = [
     "2t", "2d", "10u", "10v", "10fg", "msl", "sp", "tcc",
     "tp", "tprate", "sf", "sd", "mucape", "z", "skt", "ssrd",
-    "ssr", "str", "mx2t3", "mn2t3",
+    "ssr", "str",
 ]
+
+
+def tempminmax_params(lead: int) -> list[str]:
+    """Paramètres max/min 2 m disponibles pour une échéance donnée.
+
+    mx2t3/mn2t3 (fenêtre glissante de 3h) ne sont produits que pour les
+    échéances de pas 3h (jusqu'à 144h) ; au-delà, IFS bascule sur un pas
+    de 6h et publie mx2t6/mn2t6 à la place. À +0h, aucune fenêtre n'a
+    encore été parcourue : aucun champ à demander (repli sur 2t).
+    """
+    if lead == 0:
+        return []
+    if lead <= 144:
+        return ["mx2t3", "mn2t3"]
+    return ["mx2t6", "mn2t6"]
 IFS_PRESSURE_PARAMETERS = ["t", "u", "v", "r", "gh", "z"]
 IFS_PRESSURE_LEVELS = [300, 500, 850]
 # Niveau stratosphérique 10 hPa, téléchargé séparément (pas dans
@@ -1284,7 +1299,7 @@ def retrieve_ifs_step(
         stream="oper",
         type="fc",
         step=lead,
-        param=IFS_SURFACE_PARAMETERS,
+        param=IFS_SURFACE_PARAMETERS + tempminmax_params(lead),
         target=str(destination),
     )
     pressure_destination = destination.with_name(
@@ -1628,17 +1643,21 @@ def build_tempminmax_map(
     """Génère la carte des températures 2 m max (fond coloré) et min
     (isolignes en pointillé), issues de `mx2t3`/`mn2t3`.
 
-    À l'échéance +0h, ces champs n'existent pas (pas de fenêtre de 3h
-    écoulée avant l'instant d'analyse) : on utilise `2t` comme repli.
+    À l'échéance +0h, ces champs n'existent pas (pas de fenêtre écoulée
+    avant l'instant d'analyse) : on utilise `2t` comme repli. Au-delà de
+    144h, IFS publie mx2t6/mn2t6 (fenêtre 6h) au lieu de mx2t3/mn2t3
+    (voir `tempminmax_params`).
     """
     extent = SYNOPTIC_REGIONS[region]
-    if lead_hour == 0:
+    params = tempminmax_params(lead_hour)
+    if not params:
         native = extract_native_field(combined_grib, "2t") - 273.15
         tmax_native = native
         tmin_native = native
     else:
-        tmax_native = extract_native_field(combined_grib, "mx2t3") - 273.15
-        tmin_native = extract_native_field(combined_grib, "mn2t3") - 273.15
+        max_name, min_name = params
+        tmax_native = extract_native_field(combined_grib, max_name) - 273.15
+        tmin_native = extract_native_field(combined_grib, min_name) - 273.15
     latitudes, longitudes, tmax = native_lonlat_subset(tmax_native, extent)
     _, _, tmin = native_lonlat_subset(tmin_native, extent)
     grid = ScalarFieldGrid(
