@@ -121,6 +121,7 @@ VALUE_COLUMNS = (
     "snow_stick_risk_code",
     "snow_phase_code",
     "snowfall_total_mm",
+    "wind_speed_300_kmh",
 )
 
 INTEGER_COLUMNS = {
@@ -145,6 +146,7 @@ INTEGER_COLUMNS = {
     "snow_risk_code",
     "snow_stick_risk_code",
     "snow_phase_code",
+    "wind_speed_300_kmh",
 }
 
 MAP_FIELDS = {
