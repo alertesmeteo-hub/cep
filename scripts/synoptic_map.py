@@ -129,15 +129,6 @@ def _format_french_date(moment: datetime, with_weekday: bool = False) -> str:
     return text
 
 
-def _header_text(meta: SynopticMeta) -> str:
-    run = meta.run_time.strftime("%d/%m/%Y %HZ")
-    valid = meta.valid_time.strftime("%a %d/%m %HZ")
-    return (
-        f"{meta.variable_label} {meta.level_hpa} hPa : temp., géop. / pression.  |  "
-        f"Run {run}  —  Échéance +{meta.lead_hour:03d} h  —  Validité {valid}"
-    )
-
-
 def _find_pressure_centers(
     mslp_hpa: np.ndarray,
     latitudes: np.ndarray,
@@ -217,7 +208,14 @@ def _setup_map_axes(
             axes_height,
         )
     else:
-        axes_rect = (0.03, 0.06, 0.89, 0.86)
+        # Plein cadre comme le style "infoclimat" : le canevas adopte
+        # exactement l'aspect de la carte (au lieu d'un aspect fixe avec
+        # lettrboxing) sur les 4 côtés SAUF une fine marge à droite pour que
+        # la légende verticale (fig.colorbar) et ses graduations restent
+        # entièrement visibles au lieu d'être rognées au bord de l'image ;
+        # l'en-tête s'affiche en surimpression (voir _draw_overlay_header)
+        # plutôt que dans une bande réservée.
+        axes_rect = (0.0, 0.0, 0.93, 1.0)
         fig_width = figsize[0]
         fig_height = fig_width * axes_rect[2] * projected_aspect / axes_rect[3]
 
@@ -281,6 +279,43 @@ def downsample_for_hover(
         latitudes[::lat_stride],
         longitudes[::lon_stride],
         field[::lat_stride, ::lon_stride],
+    )
+
+
+def _draw_overlay_header(ax, meta: SynopticMeta, title_text: str) -> None:
+    """En-tête en surimpression (fond blanc semi-transparent) commun aux
+    styles "classic" et "infoclimat" depuis que les deux sont plein cadre :
+    Run en haut à gauche, échéance en haut à droite, titre centré, filigrane
+    en bas au centre. Ne réserve aucune bande blanche dans la figure."""
+    run = f"{meta.run_time.strftime('%HZ')} {_format_french_date(meta.run_time)}"
+    valid = f"{_format_french_date(meta.valid_time, with_weekday=True)} {meta.valid_time.strftime('%H')}H UTC"
+    label_box = {"facecolor": "white", "alpha": 0.75, "edgecolor": "none", "pad": 4}
+    tight_box = {"facecolor": "white", "alpha": 0.75, "edgecolor": "none", "pad": 2}
+    ax.text(
+        0.01, 0.99, f"Run ECMWF/CEP 0,25°\n{run}",
+        transform=ax.transAxes, ha="left", va="top", fontsize=8, bbox=tight_box,
+    )
+    ax.text(
+        0.99, 0.99, f"Échéance : {valid}",
+        transform=ax.transAxes, ha="right", va="top", fontsize=9,
+        fontweight="bold", color="#cc0000", bbox=tight_box,
+    )
+    ax.text(
+        0.99, 0.94, f"+{meta.lead_hour}H",
+        transform=ax.transAxes, ha="right", va="top", fontsize=12,
+        fontweight="bold", color="#cc0000", bbox=tight_box,
+    )
+    # Titre en haut, même ligne que Run/Échéance (comme le style
+    # "infoclimat") : police et marge réduites pour tenir entre les deux
+    # blocs sur un canevas proche du carré (moins large qu'en 16:9).
+    ax.text(
+        0.5, 0.99, title_text,
+        transform=ax.transAxes, ha="center", va="top", fontsize=6, bbox=tight_box,
+    )
+    ax.text(
+        0.5, 0.02, "www.alertes-meteo.com",
+        transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
+        color="white", bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 4},
     )
 
 
@@ -414,11 +449,9 @@ def render_synoptic_map(
             fill, ax=ax, orientation="vertical", fraction=0.025, pad=0.01,
             label=f"Géopotentiel {meta.level_hpa} hPa (dam)",
         )
-        fig.suptitle(_header_text(meta), fontsize=10, y=0.985)
-        fig.text(
-            0.99, 0.015, "www.alertes-meteo.com",
-            ha="right", va="bottom", fontsize=9, color="white",
-            bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 3},
+        _draw_overlay_header(
+            ax, meta,
+            f"Géopotentiel {meta.level_hpa} hPa : temp., géop. / pression.",
         )
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -595,17 +628,9 @@ def render_wind_temp_map(
             fill, ax=ax, orientation="vertical", fraction=0.025, pad=0.01,
             label=unit_label,
         )
-        run = meta.run_time.strftime("%d/%m/%Y %HZ")
-        valid = meta.valid_time.strftime("%a %d/%m %HZ")
-        fig.suptitle(
-            f"Température & vent {meta.level_hpa} hPa  |  Run {run}  —  "
-            f"Échéance +{meta.lead_hour:03d} h  —  Validité {valid}",
-            fontsize=10, y=0.985,
-        )
-        fig.text(
-            0.99, 0.015, "www.alertes-meteo.com",
-            ha="right", va="bottom", fontsize=9, color="white",
-            bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 3},
+        _draw_overlay_header(
+            ax, meta,
+            f"Température à {meta.level_hpa}hPa\nVent à {meta.level_hpa}hPa (barbules, nœuds)",
         )
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -733,18 +758,7 @@ def render_scalar_field_map(
         fig.colorbar(
             fill, ax=ax, orientation="vertical", fraction=0.025, pad=0.01, label=unit_label,
         )
-        run = meta.run_time.strftime("%d/%m/%Y %HZ")
-        valid = meta.valid_time.strftime("%a %d/%m %HZ")
-        fig.suptitle(
-            f"{title_label}  |  Run {run}  —  "
-            f"Échéance +{meta.lead_hour:03d} h  —  Validité {valid}",
-            fontsize=10, y=0.985,
-        )
-        fig.text(
-            0.99, 0.015, "www.alertes-meteo.com",
-            ha="right", va="bottom", fontsize=9, color="white",
-            bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 3},
-        )
+        _draw_overlay_header(ax, meta, title_label)
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(destination, format="png")
@@ -851,18 +865,7 @@ def render_wind_speed_map(
         fig.colorbar(
             fill, ax=ax, orientation="vertical", fraction=0.025, pad=0.01, label=unit_label,
         )
-        run = meta.run_time.strftime("%d/%m/%Y %HZ")
-        valid = meta.valid_time.strftime("%a %d/%m %HZ")
-        fig.suptitle(
-            f"Flux à {level_text}  |  Run {run}  —  "
-            f"Échéance +{meta.lead_hour:03d} h  —  Validité {valid}",
-            fontsize=10, y=0.985,
-        )
-        fig.text(
-            0.99, 0.015, "www.alertes-meteo.com",
-            ha="right", va="bottom", fontsize=9, color="white",
-            bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 3},
-        )
+        _draw_overlay_header(ax, meta, f"Flux à {level_text}")
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(destination, format="png")
