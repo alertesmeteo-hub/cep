@@ -2138,6 +2138,47 @@ def build_mslp_map(
     )
 
 
+JET_LEVEL_HPA = 300
+
+
+def build_jet300_map(
+    combined_grib: Path,
+    run_time: datetime,
+    lead_hour: int,
+    valid_time: datetime,
+    destination: Path,
+    region: str = "france",
+    hover_sink: dict | None = None,
+) -> Path:
+    """Génère la carte de vent à 300 hPa (vitesse + lignes de flux), niveau
+    du courant-jet (~9000 m). Champs `u`/`v` @ 300 hPa déjà présents dans le
+    fichier isobare téléchargé par `retrieve_ifs_step` (voir IFS_PRESSURE_LEVELS).
+    Même rendu que le flux 850 hPa (`render_wind_speed_map`)."""
+    extent = SYNOPTIC_REGIONS[region]
+    u_native = extract_native_field(combined_grib, "u", level_hpa=JET_LEVEL_HPA)
+    v_native = extract_native_field(combined_grib, "v", level_hpa=JET_LEVEL_HPA)
+    latitudes, longitudes, wind_u = native_lonlat_subset(u_native, extent)
+    _, _, wind_v = native_lonlat_subset(v_native, extent)
+    _fill_hover_sink(
+        hover_sink, latitudes, longitudes,
+        {"wind_speed_kmh": (np.hypot(wind_u, wind_v) * 3.6, "km/h")},
+    )
+    grid = WindSpeedGrid(
+        latitudes=latitudes, longitudes=longitudes, wind_u_ms=wind_u, wind_v_ms=wind_v,
+    )
+    meta = SynopticMeta(
+        level_hpa=JET_LEVEL_HPA,
+        run_time=run_time,
+        lead_hour=lead_hour,
+        valid_time=valid_time,
+        variable_label="Vent 300 hPa (jet-stream)",
+    )
+    return render_wind_speed_map(
+        grid, meta, destination, extent=extent, style=SYNOPTIC_STYLES[region],
+        cmap=WIND_SPEED_850_CMAP, level_label="300 hPa (jet-stream)",
+    )
+
+
 # Nouveaux produits synoptiques thermiques, tous à l'échéance WIND_TEMP_LEAD_HOURS
 # (24h), regroupés ici pour piloter la boucle d'orchestration dans build_product().
 NEW_SYNOPTIC_PRODUCTS = {
@@ -2156,6 +2197,7 @@ NEW_SYNOPTIC_PRODUCTS = {
     "mucape": build_mucape_map,
     "cloudcover": build_cloudcover_map,
     "mslp": build_mslp_map,
+    "jet300": build_jet300_map,
 }
 
 
@@ -2586,6 +2628,7 @@ def build_product(
         "mucape": "mucape",
         "cloudcover": "cloud_cover",
         "mslp": "mslp",
+        "jet300": "wind_speed",
     }
     new_product_levels = {
         "temp500": TEMP500_LEVEL_HPA,
@@ -2603,6 +2646,7 @@ def build_product(
         "mucape": 0,
         "cloudcover": 0,
         "mslp": 0,
+        "jet300": JET_LEVEL_HPA,
     }
     new_product_manifests: dict[str, dict[str, Any]] = {}
     for product_key, steps_list in new_product_steps.items():
