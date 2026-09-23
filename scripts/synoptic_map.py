@@ -248,12 +248,23 @@ def synoptic_axes_geometry(
     cached = _AXES_GEOMETRY_CACHE.get(cache_key)
     if cached is not None:
         return cached
-    fig, ax, data_crs, _infoclimat, axes_rect = _setup_map_axes(extent, style, figsize, dpi)
+    fig, ax, data_crs, infoclimat, _axes_rect = _setup_map_axes(extent, style, figsize, dpi)
+    # Les rendus France « classic » ajoutent une colorbar verticale. Comme
+    # Matplotlib réduit alors la GeoAxes après sa création, simulons cette
+    # opération ici afin que le JSON de valeurs exporte la même emprise que
+    # le PNG final (au lieu de l'emprise initiale, trop large).
+    if not infoclimat:
+        from matplotlib.cm import ScalarMappable
+        from matplotlib.colors import Normalize
+        fig.colorbar(ScalarMappable(norm=Normalize(0, 1)), ax=ax,
+                     orientation="vertical", fraction=0.025, pad=0.01)
+    fig.canvas.draw()
     west, east, south, north = ax.get_extent(data_crs)
+    position = ax.get_position()
     plt.close(fig)
     axes_bbox = {
-        "x0": float(axes_rect[0]), "y0": float(axes_rect[1]),
-        "x1": float(axes_rect[0] + axes_rect[2]), "y1": float(axes_rect[1] + axes_rect[3]),
+        "x0": float(position.x0), "y0": float(position.y0),
+        "x1": float(position.x1), "y1": float(position.y1),
     }
     extent_actual = {
         "west": float(west), "east": float(east),

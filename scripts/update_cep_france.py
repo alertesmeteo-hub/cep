@@ -1469,6 +1469,11 @@ def build_synoptic_map(
 
 WIND_TEMP_LEVEL_HPA = 850
 WIND_TEMP_LEAD_HOURS = [0, 24, 48, 72, 96, 120, 144, 168, 192, 216, 240]
+# Les cumuls sont les seuls produits fixes qui gagnent les jours 11 à 15 :
+# cela permet une période H+0 → H+360 sans générer toutes les cartes
+# thermiques/vent supplémentaires, bien plus lourdes et peu utiles au-delà
+# de J+10.
+SYNOPTIC_CUMUL_LEAD_HOURS = WIND_TEMP_LEAD_HOURS + [264, 288, 312, 336, 360]
 
 
 def build_wind_temp_map(
@@ -2306,6 +2311,10 @@ def build_product(
                 SYNOPTIC_REGIONS[region], SYNOPTIC_STYLES[region]
             )
             state = {
+                # v2 : bbox mesurée après le redimensionnement de la GeoAxes
+                # par la colorbar Matplotlib ; le client évite ainsi tout
+                # correctif de compatibilité destiné aux anciens JSON.
+                "axes_geometry_version": 2,
                 "axes_bbox": axes_bbox,
                 "extent": extent_actual,
                 "latitudes": [round(float(v), 3) for v in hover_sink["latitudes"]],
@@ -2521,6 +2530,41 @@ def build_product(
                             # (ex. précipitations/neige cumulées nulles à
                             # +000h) : on saute alors cette région/échéance
                             # pour ce produit sans écrire de fichier.
+                            if written is None:
+                                continue
+                            _accumulate_hover(product_key, region, lead, hover_sink)
+                            product_files[region] = relative
+                        if product_files:
+                            new_product_steps[product_key].append(
+                                {
+                                    "lead_hour": lead,
+                                    "valid_time": iso_utc(step["valid_time"]),
+                                    "files": product_files,
+                                }
+                            )
+                # J+11 à J+15 : uniquement les cartes de cumul. Les autres
+                # produits fixes restent à J+10 afin de ne pas multiplier le
+                # temps de calcul et le volume publié.
+                if lead in SYNOPTIC_CUMUL_LEAD_HOURS and lead not in WIND_TEMP_LEAD_HOURS:
+                    for product_key in ("precip", "snow"):
+                        builder = NEW_SYNOPTIC_PRODUCTS[product_key]
+                        LOGGER.info("Carte synoptique %s +%03d h", product_key, lead)
+                        product_files: dict[str, str] = {}
+                        for region in SYNOPTIC_REGIONS:
+                            relative = (
+                                f"maps/synoptic-{product_key}/{region}/"
+                                f"{product_key}-{lead:03d}h.png"
+                            )
+                            hover_sink = {}
+                            written = builder(
+                                combined_grib=destination,
+                                run_time=model_run,
+                                lead_hour=lead,
+                                valid_time=step["valid_time"],
+                                destination=result_directory / relative,
+                                region=region,
+                                hover_sink=hover_sink,
+                            )
                             if written is None:
                                 continue
                             _accumulate_hover(product_key, region, lead, hover_sink)
