@@ -326,7 +326,7 @@ def _draw_overlay_header(ax, meta: SynopticMeta, title_text: str) -> None:
     ax.text(
         0.5, 0.02, "www.alertes-meteo.com",
         transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
-        color="white", bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 4},
+        color="#f02222", fontweight="bold", bbox={"facecolor": "black", "alpha": 0.88, "edgecolor": "#ff3d3d", "pad": 4},
     )
 
 
@@ -442,7 +442,7 @@ def render_synoptic_map(
         ax.text(
             0.99, 0.02, "www.alertes-meteo.com",
             transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
-            color="white", bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 4},
+            color="#f02222", fontweight="bold", bbox={"facecolor": "black", "alpha": 0.88, "edgecolor": "#ff3d3d", "pad": 4},
         )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
         colorbar = fig.colorbar(
@@ -621,7 +621,7 @@ def render_wind_temp_map(
         ax.text(
             0.99, 0.02, "www.alertes-meteo.com",
             transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
-            color="white", bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 4},
+            color="#f02222", fontweight="bold", bbox={"facecolor": "black", "alpha": 0.88, "edgecolor": "#ff3d3d", "pad": 4},
         )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
         colorbar = fig.colorbar(
@@ -753,7 +753,7 @@ def render_scalar_field_map(
         ax.text(
             0.99, 0.02, "www.alertes-meteo.com",
             transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
-            color="white", bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 4},
+            color="#f02222", fontweight="bold", bbox={"facecolor": "black", "alpha": 0.88, "edgecolor": "#ff3d3d", "pad": 4},
         )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
         colorbar = fig.colorbar(
@@ -860,7 +860,7 @@ def render_wind_speed_map(
         ax.text(
             0.99, 0.02, "www.alertes-meteo.com",
             transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
-            color="white", bbox={"facecolor": "black", "alpha": 0.75, "edgecolor": "none", "pad": 4},
+            color="#f02222", fontweight="bold", bbox={"facecolor": "black", "alpha": 0.88, "edgecolor": "#ff3d3d", "pad": 4},
         )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
         colorbar = fig.colorbar(
