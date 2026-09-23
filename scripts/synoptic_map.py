@@ -440,8 +440,8 @@ def render_synoptic_map(
             transform=ax.transAxes, ha="center", va="top", fontsize=9, bbox=label_box,
         )
         ax.text(
-            0.99, 0.02, "www.alertes-meteo.com",
-            transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
+            0.5, 0.02, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
             color="#f02222", fontweight="bold", bbox={"facecolor": "black", "alpha": 0.88, "edgecolor": "#ff3d3d", "pad": 4},
         )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
@@ -619,8 +619,8 @@ def render_wind_temp_map(
             transform=ax.transAxes, ha="center", va="top", fontsize=9, bbox=label_box,
         )
         ax.text(
-            0.99, 0.02, "www.alertes-meteo.com",
-            transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
+            0.5, 0.02, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
             color="#f02222", fontweight="bold", bbox={"facecolor": "black", "alpha": 0.88, "edgecolor": "#ff3d3d", "pad": 4},
         )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
@@ -751,8 +751,8 @@ def render_scalar_field_map(
             transform=ax.transAxes, ha="center", va="top", fontsize=9, bbox=label_box,
         )
         ax.text(
-            0.99, 0.02, "www.alertes-meteo.com",
-            transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
+            0.5, 0.02, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
             color="#f02222", fontweight="bold", bbox={"facecolor": "black", "alpha": 0.88, "edgecolor": "#ff3d3d", "pad": 4},
         )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
@@ -858,8 +858,8 @@ def render_wind_speed_map(
             transform=ax.transAxes, ha="center", va="top", fontsize=10, bbox=label_box,
         )
         ax.text(
-            0.99, 0.02, "www.alertes-meteo.com",
-            transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
+            0.5, 0.02, "www.alertes-meteo.com",
+            transform=ax.transAxes, ha="center", va="bottom", fontsize=8,
             color="#f02222", fontweight="bold", bbox={"facecolor": "black", "alpha": 0.88, "edgecolor": "#ff3d3d", "pad": 4},
         )
         colorbar_axes = ax.inset_axes([0.34, 0.02, 0.44, 0.035])
