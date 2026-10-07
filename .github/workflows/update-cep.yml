@@ -46,13 +46,25 @@ jobs:
       - name: Produire les cartes et les prévisions CEP
         id: build
         run: |
-          python scripts/update_cep_france.py \
-            --catalog config/communes-france.json \
-            --output-dir build/national \
-            --forecast-hours 360 \
-            --current-metadata-url \
-            "https://raw.githubusercontent.com/${{ github.repository }}/data/index.json" \
-            ${{ github.event.inputs.force == 'true' && '--force' || '' }}
+          # Coupures passagères de la source (connexion fermée, 429/5xx, délai dépassé) : jusqu'à 3 tentatives.
+          set -o pipefail
+          for attempt in 1 2 3; do
+            if python scripts/update_cep_france.py \
+              --catalog config/communes-france.json \
+              --output-dir build/national \
+              --forecast-hours 360 \
+              --current-metadata-url \
+              "https://raw.githubusercontent.com/${{ github.repository }}/data/index.json" \
+              ${{ github.event.inputs.force == 'true' && '--force' || '' }} 2>&1 | tee "$RUNNER_TEMP/tentative.log"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ] || ! grep -qiE 'RemoteDisconnected|Connection(Error|Reset|refused| aborted)|IncompleteRead|ReadTimeout|ConnectTimeout|ChunkedEncodingError|ProtocolError|Max retries exceeded|Temporary failure in name resolution|Name or service not known|SSLError|HTTP ?(Error)?:? ?(429|500|502|503|504)|(429|502|503|504) (Too Many|Bad Gateway|Service Unavailable|Gateway Time|Server)|Server is busy|ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed|socket hang up|timed out|Read timed' "$RUNNER_TEMP/tentative.log"; then
+              echo "::error::Échec (tentative $attempt)"
+              exit 1
+            fi
+            echo "Erreur réseau passagère (tentative $attempt), nouvelle tentative dans 90 s"
+            sleep 90
+          done
           if test -f build/national/index.json; then
             echo "publish=true" >> "$GITHUB_OUTPUT"
           else
