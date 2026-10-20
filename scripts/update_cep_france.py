@@ -59,7 +59,7 @@ from synoptic_map import (
 
 
 LOGGER = logging.getLogger("cep.france")
-PIPELINE_VERSION = "1.7.1"
+PIPELINE_VERSION = "1.7.2"
 DATASET_PAGE = "https://www.ecmwf.int/en/forecasts/datasets/open-data"
 DEFAULT_CURRENT_METADATA_URL = (
     "https://raw.githubusercontent.com/alertesmeteo-hub/"
@@ -535,6 +535,7 @@ def message_field(gid: int) -> str | None:
         "10u": "wind_u_ms",
         "10v": "wind_v_ms",
         "10fg": "gust_speed_ms",
+        "10fg3": "gust_speed_ms",
         "fg10": "gust_speed_ms",
         "mucape": "cape_jkg",
         "sp": "surface_pressure_pa",
@@ -1266,12 +1267,10 @@ IFS_SURFACE_PARAMETERS = [
     "ssr", "str",
 ]
 
-# Échéances où IFS Open Data publie la rafale 10m sous le nom `10fg3`
-# (fenêtre 3h) au lieu de `10fg` (confirmé par test réel : `10fg` seul
-# échoue précisément pour 96/120/144h, fonctionne partout ailleurs dans
-# nos échéances, y compris au-delà de 144h où le pas passe à 6h).
-GUSTS10M_3H_LEADS = {96, 120, 144}
-
+# Les index officiels IFS du run 2026-10-20 00 UTC utilisent 10fg3
+# sur le pas 3 h de +93 à +144 h. 10fg est utilisé avant et après.
+# Conserver le nom du paramètre à la récupération ET au décodage GRIB.
+GUSTS10M_3H_LEADS = set(range(93, 145, 3))
 
 def gusts10m_param(lead: int) -> str:
     return "10fg3" if lead in GUSTS10M_3H_LEADS else "10fg"
